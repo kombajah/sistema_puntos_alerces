@@ -66,7 +66,7 @@ $cats = $conn->query("SELECT * FROM categorias");
     <div class="card p-3 shadow-sm text-center" id="estadoNFC">
         <h4>ACERCAR SU TARJETA</h4>
         <p class="text-muted">Presiona un botón y pide al alumno que acerque su tarjeta o muestre su QR.</p>
-        <p id="estado" class="text-primary"></p>
+        <p id="estado" class="fw-bold text-primary fs-5"></p>
         <button class="btn btn-dark w-100 rounded-pill mb-2" onclick="iniciarEscaneo()">🛜 Escanear tarjeta NFC</button>
         <button class="btn btn-outline-dark w-100 rounded-pill" onclick="iniciarQR()">📷 Escanear código QR</button>
         <div id="lectorQR" class="mt-3" style="display:none; width:100%; max-width:320px; margin:auto"></div>
@@ -162,7 +162,10 @@ async function cargar(codigo){
     try {
         const r = await fetch("buscar_alumno.php?uid=" + encodeURIComponent(codigo));
         const d = await r.json();
-        if (d.error) { alert(d.error); return false; }
+        if (d.error) { 
+            document.getElementById('estado').innerText = "⚠️ " + d.error; 
+            return false; 
+        }
         
         await detenerQR();
 
@@ -173,7 +176,7 @@ async function cargar(codigo){
         document.getElementById('alumno_id_input').value = d.id;
         return true;
     } catch(e) {
-        alert("Error al consultar el alumno: " + (e.message || e));
+        document.getElementById('estado').innerText = "⚠️ Error al consultar el alumno";
         return false;
     } finally { 
         ocupado = false; 
@@ -182,12 +185,10 @@ async function cargar(codigo){
 
 // Extrae el UID o los datos NDEF grabados en la tarjeta
 function extraerCodigoNFC(event) {
-    // 1. Probar UID o Serial Number
     if (event.serialNumber) {
         return event.serialNumber.replace(/:/g, '').toUpperCase();
     }
     
-    // 2. Si no hay serialNumber, leer registros NDEF cargados
     if (event.message && event.message.records) {
         for (const record of event.message.records) {
             if (record.recordType === "text") {
@@ -204,8 +205,10 @@ function extraerCodigoNFC(event) {
 
 async function iniciarEscaneo(){
     await detenerQR();
+    const elemEstado = document.getElementById('estado');
+
     if (!("NDEFReader" in window)) { 
-        alert("Web NFC requiere Chrome en Android y HTTPS. Usa el lector QR."); 
+        elemEstado.innerText = "⚠️ Web NFC requiere Chrome en Android y HTTPS. Usa el lector QR."; 
         return; 
     }
     try {
@@ -214,25 +217,26 @@ async function iniciarEscaneo(){
             ndef.addEventListener("reading", (event) => {
                 const codigo = extraerCodigoNFC(event);
                 if (codigo) {
+                    elemEstado.innerText = "⏳ Procesando tarjeta...";
                     cargar(codigo);
                 } else {
-                    alert("Se detectó la tarjeta pero no se pudo obtener un identificador o texto válido.");
+                    elemEstado.innerText = "⚠️ Tarjeta no reconocida o sin datos válidos.";
                 }
             });
             ndef.addEventListener("readingerror", () => {
-                alert("Error al leer la tarjeta NFC. Inténtalo de nuevo.");
+                elemEstado.innerText = "⚠️ Error al leer la tarjeta. Inténtalo de nuevo.";
             });
         }
         await ndef.scan();
-        document.getElementById('estado').innerText = "Escaneando... acerca la tarjeta ahora.";
+        elemEstado.innerText = "🛜 Escaneando... Acerca la tarjeta ahora al teléfono.";
     } catch(e){ 
-        alert("Error al iniciar NFC: " + (e.message || e)); 
+        elemEstado.innerText = "⚠️ Error al iniciar NFC: " + (e.message || e); 
     }
 }
 
 async function iniciarQR(){
     if (typeof Html5QrcodeScanner === 'undefined') { 
-        alert("Cargando la librería QR... Reintentando."); 
+        document.getElementById('estado').innerText = "⚠️ Cargando librería QR..."; 
         return; 
     }
 
@@ -261,7 +265,7 @@ async function iniciarQR(){
         );
     } catch(e) {
         box.style.display = 'none';
-        alert("Error al inicializar el escáner: " + (e.message || e));
+        document.getElementById('estado').innerText = "⚠️ Error al iniciar escáner QR";
     }
 }
 
