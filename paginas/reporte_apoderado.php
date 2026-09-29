@@ -30,7 +30,7 @@ $alumno_id = (int)$alumno['id'];
 $stmtPuntos = $conn->prepare("
   SELECT cat.nombre AS categoria, COALESCE(SUM(p.puntos), 0) AS total_puntos
   FROM categorias cat
-  LEFT JOIN puntos p ON p.categoria_id = cat.id AND p.alumno_id = ?
+  LEFT JOIN registro_puntos p ON p.categoria_id = cat.id AND p.alumno_id = ?
   GROUP BY cat.id, cat.nombre
   ORDER BY cat.nombre ASC
 ");
