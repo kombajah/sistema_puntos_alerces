@@ -1,6 +1,7 @@
 <?php
 require_once 'conexion.php';
 
+
 $token = trim($_GET['token'] ?? '');
 if (empty($token)) {
   die("Acceso denegado: Token no proporcionado.");
