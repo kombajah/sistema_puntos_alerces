@@ -43,7 +43,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
       $id=(int)$_POST['id']; $cid=(int)$_POST['curso_id']; $n=trim($_POST['nombre_alumno']); $uid=trim($_POST['nfc_uid']) ?: null;
       $s=$conn->prepare("SELECT curso_id FROM alumnos WHERE id=?"); $s->bind_param("i",$id);$s->execute();
       $act=$s->get_result()->fetch_assoc();
-      if (!$act \vert{}\vert{} !es_mio_curso($conn,$act['curso_id']) \vert{}\vert{} !es_mio_curso($conn,$cid))$error = "No tienes permiso sobre ese alumno o curso.";
+      if (!$act || !es_mio_curso($conn,$act['curso_id']) ||!es_mio_curso($conn,$cid))$error = "No tienes permiso sobre ese alumno o curso.";
       elseif (!cupo($conn,$cid,$id))$error = "El curso destino ya tiene 50 alumnos.";
       else {
         $s=$conn->prepare("UPDATE alumnos SET curso_id=?, nombre=?, nfc_uid=? WHERE id=?"); $s->bind_param("issi",$cid,$n,$uid,$id);$s->execute();
