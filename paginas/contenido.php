@@ -254,6 +254,7 @@ async function leerNFC(idCampo){
   }
 }
 
+
 function verQR(code, nombre){
   document.getElementById('qrNombre').innerText = nombre;
   const b = document.getElementById('qrBox'); b.innerHTML = '';
