@@ -1,14 +1,13 @@
 <?php
 require_once 'conexion.php'; requiere_login();
-$mensaje=''; $error='';
+$mensaje='';$error='';
 function nuevo_qr(){ return bin2hex(random_bytes(6)); }
-function es_mio_curso($conn,$cid){
-  $s=$conn->prepare("SELECT docente_id FROM cursos WHERE id=?"); $s->bind_param("i",$cid); $s->execute();
+function es_mio_curso($conn,$cid){$s=$conn->prepare("SELECT docente_id FROM cursos WHERE id=?"); $s->bind_param("i",$cid);$s->execute();
   $r=$s->get_result()->fetch_assoc();
-  return $r && (es_admin() || (int)$r['docente_id']===docente_id());
+  return $r && (es_admin() \vert{}\vert{} (int)$r['docente_id']===docente_id());
 }
 function cupo($conn,$cid,$excluir=0){
-  $s=$conn->prepare("SELECT COUNT(*) t FROM alumnos WHERE curso_id=? AND id<>?"); $s->bind_param("ii",$cid,$excluir); $s->execute();
+  $s=$conn->prepare("SELECT COUNT(*) t FROM alumnos WHERE curso_id=? AND id<>?"); $s->bind_param("ii",$cid,$excluir);$s->execute();
   return $s->get_result()->fetch_assoc()['t'] < 50;
 }
 
@@ -72,8 +71,7 @@ $types=''; $vals=[];$sqlA = "SELECT ag.*, m.usuario docente FROM asignaturas ag 
 filtro_docente($sqlA,$types,$vals,'ag');$s=$conn->prepare($sqlA." ORDER BY ag.nombre"); if($vals) $s->bind_param($types,...$vals);$s->execute();
 $asignaturas =$s->get_result()->fetch_all(MYSQLI_ASSOC);
 
-$types=''; $vals=[];$sqlC = "SELECT c.*, m.usuario docente, ag.nombre asignatura, (SELECT COUNT(*) FROM alumnos WHERE curso_id=c.id) tot
-         FROM cursos c JOIN maestros m ON m.id=c.docente_id JOIN asignaturas ag ON ag.id=c.asignatura_id WHERE 1=1";
+$types=''; $vals=[];$sqlC = "SELECT c.*, m.usuario docente, ag.nombre asignatura, (SELECT COUNT(*) FROM alumnos WHERE curso_id=c.id) tot FROM cursos c JOIN maestros m ON m.id=c.docente_id JOIN asignaturas ag ON ag.id=c.asignatura_id WHERE 1=1";
 filtro_docente($sqlC,$types,$vals,'c');$s=$conn->prepare($sqlC." ORDER BY c.nombre"); if($vals) $s->bind_param($types,...$vals);$s->execute();
 $cursos =$s->get_result()->fetch_all(MYSQLI_ASSOC);
 
