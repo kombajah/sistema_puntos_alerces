@@ -92,8 +92,9 @@ if ($idsCursos) {
 $ed = (int)($_GET['editar'] ?? 0);
 
 // Detectar esquema y dominio base para construir la URL del apoderado
-$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ||$_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
-$baseUrl =$protocol . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']) . '/reporte_apoderado.php?token=';
+$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+$host = $_SERVER['HTTP_HOST'];
+$baseUrl = $protocol . $host . '/paginas/reporte_apoderado.php?token=';
 ?>
 <!DOCTYPE html><html lang="es"><head><title>Contenido</title><?php include 'head.php'; ?>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script></head>
