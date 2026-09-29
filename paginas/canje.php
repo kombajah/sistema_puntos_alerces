@@ -104,68 +104,12 @@ $alumnos = $s->get_result()->fetch_all(MYSQLI_ASSOC);
 const T=<?= $tasa ?>;
 function cst(){document.getElementById('pb')&&(document.getElementById('costo').innerText=(parseInt(document.getElementById('pb').value)||0)*T);}
 
-// --- SINTETIZADOR FIDELIDAD CAJA REGISTRADORA REAL ---
+// Reproducción de archivo de audio real de caja registradora
 function reproducirCajaRegistradora() {
-  const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  if (!AudioCtx) return;
-  const ctx = new AudioCtx();
-  const t = ctx.currentTime;
-
-  // 1. Sonido de monedas/mecanismo (Arrastre inicial)
-  const bufferSize = ctx.sampleRate * 0.12;
-  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.03));
-  }
-
-  const noise = ctx.createBufferSource();
-  noise.buffer = buffer;
-  const filter = ctx.createBiquadFilter();
-  filter.type = 'highpass';
-  filter.frequency.value = 2500;
-
-  const noiseGain = ctx.createGain();
-  noiseGain.gain.setValueAtTime(0.12, t);
-  noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
-
-  noise.connect(filter);
-  filter.connect(noiseGain);
-  noiseGain.connect(ctx.destination);
-  noise.start(t);
-
-  // 2. Impacto metálico ("Cha")
-  const oscImpact = ctx.createOscillator();
-  const impactGain = ctx.createGain();
-  oscImpact.type = 'triangle';
-  oscImpact.frequency.setValueAtTime(1200, t);
-  oscImpact.frequency.exponentialRampToValueAtTime(400, t + 0.05);
-  impactGain.gain.setValueAtTime(0.15, t);
-  impactGain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
-  oscImpact.connect(impactGain);
-  impactGain.connect(ctx.destination);
-  oscImpact.start(t);
-  oscImpact.stop(t + 0.05);
-
-  // 3. Campana principal metálica aguda ("Ching!")
-  // Tono fundamental ~2093 Hz (C7) y armónico inarmónico para sonido a metal real
-  const frecs = [2093, 4186, 5232];
-  const ganancias = [0.25, 0.12, 0.06];
-
-  frecs.forEach((frec, idx) => {
-    const osc = ctx.createOscillator();
-    const g = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(frec, t + 0.06);
-
-    g.gain.setValueAtTime(ganancias[idx], t + 0.06);
-    // Caída con resonancia larga
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
-
-    osc.connect(g);
-    g.connect(ctx.destination);
-    osc.start(t + 0.06);
-    osc.stop(t + 0.9);
+  const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3');
+  audio.volume = 0.8;
+  audio.play().catch(e => {
+    console.log("El navegador bloqueó la reproducción automática o falló la carga: ", e);
   });
 }
 
