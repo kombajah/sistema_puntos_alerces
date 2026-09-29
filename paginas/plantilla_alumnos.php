@@ -1,12 +1,21 @@
 <?php
-require_once 'conexion.php'; requiere_login();
-if (!es_admin()) { http_response_code(403); die("Solo el administrador puede descargar la plantilla."); }
+require_once 'conexion.php'; 
+requiere_login();
+
 header('Content-Type: text/csv; charset=utf-8');
 header('Content-Disposition: attachment; filename="plantilla_alumnos.csv"');
-echo "\xEF\xBB\xBF"; // BOM para que Excel detecte UTF-8 correctamente
-$out = fopen('php://output', 'w');
-fputcsv($out, ['docente_usuario', 'asignatura', 'curso', 'alumno', 'nfc_uid']);
-fputcsv($out, ['jperez', 'Lenguaje', '1ro Básico A', 'Cristofer Morales', '']);
-fputcsv($out, ['jperez', 'Lenguaje', '1ro Básico A', 'Ana Pérez', '04:AA:BB:CC']);
-fputcsv($out, ['jperez', 'Matemática', '1ro Básico A', 'Cristofer Morales', '']);
-fclose($out);
+
+// 1. Marca UTF-8 BOM para caracteres especiales (tildes, ñ)
+echo "\xEF\xBB\xBF";
+
+// 2. Instrucción explícita para que Excel aplique las columnas automáticamente
+echo "sep=;\n";
+
+// 3. Encabezados de la plantilla
+echo "docente_usuario;asignatura;curso;alumno;nfc_uid\n";
+
+// 4. Filas de ejemplo
+echo 'jperez;Lenguaje;"1ro Básico A";"Cristofer Morales";' . "\n";
+echo 'jperez;Lenguaje;"1ro Básico A";"Ana Pérez";04:AA:BB:CC' . "\n";
+echo 'jperez;Matemática;"1ro Básico A";"Cristofer Morales";' . "\n";
+exit;
