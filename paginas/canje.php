@@ -1,7 +1,8 @@
 <?php
 require_once 'conexion.php';
 requiere_login();
-$mensaje = ''; $error = '';
+$mensaje = ''; $error = ''; $canje_exitoso = false; // Variable para activar el sonido
+
 function tasa($conn){ $r=$conn->query("SELECT valor FROM config WHERE clave='tasa_canje'")->fetch_assoc(); return max(1,(int)($r['valor']??10)); }
 function alumno_permitido($conn,$id){
   $s=$conn->prepare("SELECT c.docente_id FROM alumnos a JOIN cursos c ON c.id=a.curso_id WHERE a.id=?"); $s->bind_param("i",$id); $s->execute();
@@ -25,7 +26,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         AND (COALESCE((SELECT SUM(puntos) FROM registro_puntos WHERE alumno_id=a.id),0)
            - COALESCE((SELECT SUM(puntos_virtuales) FROM canjes WHERE alumno_id=a.id),0)) >= ?");
       $s->bind_param("iisii", $costo, $base, $obs, $alumno, $costo); $s->execute();
-      if ($s->affected_rows > 0) $mensaje = "Canje registrado: -$costo pts virtuales → +$base pt(s) base.";
+      if ($s->affected_rows > 0) {
+        $mensaje = "Canje registrado: -$costo pts virtuales → +$base pt(s) base.";
+        $canje_exitoso = true; // Flag para activar el audio en JavaScript
+      }
       else $error = "Saldo insuficiente (se necesitan $costo pts virtuales).";
     }
   }
@@ -96,6 +100,68 @@ $alumnos = $s->get_result()->fetch_all(MYSQLI_ASSOC);
       </tbody></table>
   </div>
 </div>
-<script>const T=<?= $tasa ?>;function cst(){document.getElementById('costo').innerText=(parseInt(document.getElementById('pb').value)||0)*T;}</script>
+<script>
+const T=<?= $tasa ?>;
+function cst(){document.getElementById('pb')&&(document.getElementById('costo').innerText=(parseInt(document.getElementById('pb').value)||0)*T);}
+
+// --- SINTETIZADOR DE CAJA REGISTRADORA (CHA-CHING) ---
+function reproducirCajaRegistradora() {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return;
+  const ctx = new AudioCtx();
+  const t = ctx.currentTime;
+
+  // 1. Ruido metálico/mecánico al abrir la caja (click inicial)
+  const bufferSize = ctx.sampleRate * 0.05;
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.value = 3000;
+  const noiseGain = ctx.createGain();
+  noiseGain.gain.setValueAtTime(0.08, t);
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+
+  noise.connect(filter);
+  filter.connect(noiseGain);
+  noiseGain.connect(ctx.destination);
+  noise.start(t);
+
+  // 2. Tono 1: Bell Note (A6 ~ 1760 Hz) - Entrada rápida
+  const osc1 = ctx.createOscillator();
+  const g1 = ctx.createGain();
+  osc1.type = 'sine';
+  osc1.frequency.setValueAtTime(1760, t + 0.04);
+  g1.gain.setValueAtTime(0.2, t + 0.04);
+  g1.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+  osc1.connect(g1);
+  g1.connect(ctx.destination);
+  osc1.start(t + 0.04);
+  osc1.stop(t + 0.3);
+
+  // 3. Tono 2: Bell Note Aguda (E7 ~ 2637 Hz) - Campana principal "CHING!"
+  const osc2 = ctx.createOscillator();
+  const g2 = ctx.createGain();
+  osc2.type = 'sine';
+  osc2.frequency.setValueAtTime(2637, t + 0.1);
+  g2.gain.setValueAtTime(0.3, t + 0.1);
+  g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
+  osc2.connect(g2);
+  g2.connect(ctx.destination);
+  osc2.start(t + 0.1);
+  osc2.stop(t + 0.8);
+}
+
+// Se ejecuta si el canje fue exitoso tras el envío del formulario POST
+<?php if ($canje_exitoso): ?>
+  document.addEventListener("DOMContentLoaded", () => {
+    reproducirCajaRegistradora();
+  });
+<?php endif; ?>
+</script>
 <?php include 'footer.php'; ?>
 </body></html>
