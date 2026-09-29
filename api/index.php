@@ -2,7 +2,7 @@
 // Único punto de entrada desplegado como función Vercel. Todas las páginas viven en
 // /paginas y se sirven desde aquí (require interno), para no superar el límite de
 // Funciones Serverless del plan Hobby (12). Ver vercel.json.
-require_once __DIR__ . '/paginas/conexion.php';
+require_once __DIR__ . '/../paginas/conexion.php';
 iniciar_sesion();
 
 $permitidas = [
@@ -15,7 +15,7 @@ $ruta = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 $pagina = basename($ruta);
 
 if (in_array($pagina, $permitidas, true)) {
-  require __DIR__ . '/paginas/' . $pagina;
+  require __DIR__ . '/../paginas/' . $pagina;
   exit;
 }
 
@@ -41,7 +41,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
   $error = "Usuario o contraseña incorrectos.";
 }
 ?>
-<!DOCTYPE html><html lang="es"><head><title>Escuela Los Alerces - Sistema de Puntos</title><?php include __DIR__ . '/paginas/head.php'; ?></head>
+<!DOCTYPE html><html lang="es"><head><title>Escuela Los Alerces - Sistema de Puntos</title><?php include __DIR__ . '/../paginas/head.php'; ?></head>
 <body class="d-flex flex-column" style="min-height:100vh">
   <div class="flex-grow-1 d-flex align-items-center justify-content-center px-3">
     <div class="card login-card p-4 text-center w-100">
@@ -56,5 +56,5 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
       </form>
     </div>
   </div>
-  <?php include __DIR__ . '/paginas/footer.php'; ?>
+  <?php include __DIR__ . '/../paginas/footer.php'; ?>
 </body></html>
