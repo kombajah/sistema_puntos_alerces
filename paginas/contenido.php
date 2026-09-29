@@ -4,7 +4,7 @@ $mensaje='';$error='';
 function nuevo_qr(){ return bin2hex(random_bytes(6)); }
 function es_mio_curso($conn,$cid){$s=$conn->prepare("SELECT docente_id FROM cursos WHERE id=?"); $s->bind_param("i",$cid);$s->execute();
   $r=$s->get_result()->fetch_assoc();
-  return $r && (es_admin() \vert{}\vert{} (int)$r['docente_id']===docente_id());
+  return $r && (es_admin() || (int)$r['docente_id']===docente_id());
 }
 function cupo($conn,$cid,$excluir=0){
   $s=$conn->prepare("SELECT COUNT(*) t FROM alumnos WHERE curso_id=? AND id<>?"); $s->bind_param("ii",$cid,$excluir);$s->execute();
@@ -45,7 +45,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
       $id=(int)$_POST['id']; $cid=(int)$_POST['curso_id']; $n=trim($_POST['nombre_alumno']); $uid=trim($_POST['nfc_uid']) ?: null;
       $s=$conn->prepare("SELECT curso_id FROM alumnos WHERE id=?"); $s->bind_param("i",$id);$s->execute();
       $act=$s->get_result()->fetch_assoc();
-      if (!$act \vert{}\vert{} !es_mio_curso($conn,$act['curso_id']) \vert{}\vert{} !es_mio_curso($conn,$cid))$error = "No tienes permiso sobre ese alumno o curso.";
+      if (!$act || !es_mio_curso($conn,$act['curso_id']) || !es_mio_curso($conn,$cid))$error = "No tienes permiso sobre ese alumno o curso.";
       elseif (!cupo($conn,$cid,$id))$error = "El curso destino ya tiene 50 alumnos.";
       else {
         $s=$conn->prepare("UPDATE alumnos SET curso_id=?, nombre=?, nfc_uid=? WHERE id=?"); $s->bind_param("issi",$cid,$n,$uid,$id);$s->execute();
@@ -58,7 +58,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
       }
 
     } elseif (isset($_POST['borrar_alumno'])) {$id=(int)$_POST['id'];$s=$conn->prepare("SELECT curso_id FROM alumnos WHERE id=?"); $s->bind_param("i",$id);$s->execute(); $a=$s->get_result()->fetch_assoc();
-      if (!$a \vert{}\vert{} !es_mio_curso($conn,$a['curso_id']))$error = "No tienes permiso sobre ese alumno.";
+      if (!$a || !es_mio_curso($conn,$a['curso_id']))$error = "No tienes permiso sobre ese alumno.";
       else { $s=$conn->prepare("DELETE FROM alumnos WHERE id=?"); $s->bind_param("i",$id); $s->execute();$mensaje="Alumno eliminado."; }
 
     } elseif (isset($_POST['borrar_curso'])) {
@@ -92,7 +92,7 @@ if ($idsCursos) {
 $ed = (int)($_GET['editar'] ?? 0);
 
 // Detectar esquema y dominio base para construir la URL del apoderado
-$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' \vert{}\vert{}$_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ||$_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
 $baseUrl =$protocol . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']) . '/reporte_apoderado.php?token=';
 ?>
 <!DOCTYPE html><html lang="es"><head><title>Contenido</title><?php include 'head.php'; ?>
