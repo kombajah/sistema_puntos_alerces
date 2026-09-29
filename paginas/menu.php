@@ -9,4 +9,8 @@
   <?php if (es_admin()): ?><?= lk('carga_masiva.php','📥 Carga masiva',$act) ?><?= lk('maestros.php','🔑 Maestros',$act) ?><?php endif; ?>
   <a href="salir.php" class="text-white text-decoration-none small">Salir</a>
 </div>
-<div class="text-center text-white small pb-3"><?= h($_SESSION['maestro']) ?> · <?= es_admin()?'Administrador':'Docente' ?></div>
+<div class="text-center pb-3">
+  <span class="badge rounded-pill" style="background:#ffffff33;color:#fff;font-size:.85rem;padding:6px 14px">
+    👋 Sesión activa: <strong><?= h($_SESSION['maestro']) ?></strong> · <?= es_admin()?'Administrador':'Docente' ?>
+  </span>
+</div>

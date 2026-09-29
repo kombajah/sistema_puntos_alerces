@@ -5,14 +5,14 @@ mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 // Variables). Nunca dejes la contraseña real escrita en este archivo ni en git. ---
 // Para pruebas locales, copia config.local.example.php a config.local.php (no se sube a git)
 // y completa ahí tus datos; se carga automáticamente si existe.
-if (file_exists(__DIR__ . '/config.local.php')) require_once __DIR__ . '/config.local.php';
+if (file_exists(__DIR__ . '/../config.local.php')) require_once __DIR__ . '/../config.local.php';
 
 $DB_HOST = getenv('DB_HOST') ?: '';
 $DB_PORT = (int)(getenv('DB_PORT') ?: 18347);
 $DB_NAME = getenv('DB_NAME') ?: '';
 $DB_USER = getenv('DB_USER') ?: '';
 $DB_PASS = getenv('DB_PASS') ?: '';
-$DB_CA   = __DIR__ . '/certs/ca.pem';
+$DB_CA   = __DIR__ . '/../certs/ca.pem';
 
 try {
   $conn = mysqli_init();
