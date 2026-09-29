@@ -1,6 +1,6 @@
 <?php
 require_once 'conexion.php'; requiere_login();
-if (!es_admin()) { http_response_code(403); die("Solo el administrador puede usar la carga masiva."); }
+//if (!es_admin()) { http_response_code(403); die("Solo el administrador puede usar la carga masiva."); }
 
 function _nuevo_qr(){ return bin2hex(random_bytes(6)); }
 
