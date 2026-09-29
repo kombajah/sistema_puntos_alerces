@@ -40,3 +40,16 @@ trata cada `.php` declarado como una función independiente, este proyecto ahora
 Si en el futuro agregas una página nueva: crea el archivo en `/paginas/tu_pagina.php`
 y agrega `'tu_pagina.php'` al arreglo `$permitidas` dentro de `index.php`. No necesitas
 tocar `vercel.json` ni te acercas de nuevo al límite de 12 funciones.
+
+
+
+##Explicación de la Arquitectura
+Entorno Local (Desarrollo): Escribes y editas el código PHP/JS en Visual Studio Code dentro de tu laptop.
+
+Control de Versiones (GitHub): Realizas git push hacia el repositorio kombajah/sistema_puntos_alerces.
+
+Despliegue Continuo (Vercel): Vercel detecta automáticamente cada cambio subido a GitHub y realiza el build/despliegue de la aplicación web.
+
+Persistencia de Datos (Aiven.io): La aplicación desplegada en Vercel se conecta mediante las credenciales de base de datos al servicio MySQL administrado en Aiven.io (mysql-sistema-nfc).
+
+Autenticación Unificada: Todas las plataformas cloud (GitHub, Vercel y Aiven) están centralizadas e integradas bajo la cuenta de correo alexgaratenecunir@gmail.com.
