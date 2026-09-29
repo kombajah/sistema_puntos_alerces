@@ -51,7 +51,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
       }
 
     } elseif (isset($_POST['borrar_alumno'])) {$id=(int)$_POST['id'];$s=$conn->prepare("SELECT curso_id FROM alumnos WHERE id=?"); $s->bind_param("i",$id);$s->execute(); $a=$s->get_result()->fetch_assoc();
-      if (!$a \vert{}\vert{} !es_mio_curso($conn,$a['curso_id']))$error = "No tienes permiso sobre ese alumno.";
+      if (!$a || !es_mio_curso($conn,$a['curso_id']))$error = "No tienes permiso sobre ese alumno.";
       else { $s=$conn->prepare("DELETE FROM alumnos WHERE id=?"); $s->bind_param("i",$id); $s->execute();$mensaje="Alumno eliminado."; }
 
     } elseif (isset($_POST['borrar_curso'])) {
