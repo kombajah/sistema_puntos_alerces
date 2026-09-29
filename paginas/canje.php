@@ -1,7 +1,7 @@
 <?php
 require_once 'conexion.php';
 requiere_login();
-$mensaje = ''; $error = ''; $canje_exitoso = false; // Variable para activar el sonido
+$mensaje = ''; $error = ''; $canje_exitoso = false;
 
 function tasa($conn){ $r=$conn->query("SELECT valor FROM config WHERE clave='tasa_canje'")->fetch_assoc(); return max(1,(int)($r['valor']??10)); }
 function alumno_permitido($conn,$id){
@@ -28,7 +28,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
       $s->bind_param("iisii", $costo, $base, $obs, $alumno, $costo); $s->execute();
       if ($s->affected_rows > 0) {
         $mensaje = "Canje registrado: -$costo pts virtuales → +$base pt(s) base.";
-        $canje_exitoso = true; // Flag para activar el audio en JavaScript
+        $canje_exitoso = true;
       }
       else $error = "Saldo insuficiente (se necesitan $costo pts virtuales).";
     }
@@ -104,59 +104,71 @@ $alumnos = $s->get_result()->fetch_all(MYSQLI_ASSOC);
 const T=<?= $tasa ?>;
 function cst(){document.getElementById('pb')&&(document.getElementById('costo').innerText=(parseInt(document.getElementById('pb').value)||0)*T);}
 
-// --- SINTETIZADOR DE CAJA REGISTRADORA (CHA-CHING) ---
+// --- SINTETIZADOR FIDELIDAD CAJA REGISTRADORA REAL ---
 function reproducirCajaRegistradora() {
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   if (!AudioCtx) return;
   const ctx = new AudioCtx();
   const t = ctx.currentTime;
 
-  // 1. Ruido metálico/mecánico al abrir la caja (click inicial)
-  const bufferSize = ctx.sampleRate * 0.05;
+  // 1. Sonido de monedas/mecanismo (Arrastre inicial)
+  const bufferSize = ctx.sampleRate * 0.12;
   const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
   const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.03));
+  }
 
   const noise = ctx.createBufferSource();
   noise.buffer = buffer;
   const filter = ctx.createBiquadFilter();
-  filter.type = 'bandpass';
-  filter.frequency.value = 3000;
+  filter.type = 'highpass';
+  filter.frequency.value = 2500;
+
   const noiseGain = ctx.createGain();
-  noiseGain.gain.setValueAtTime(0.08, t);
-  noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+  noiseGain.gain.setValueAtTime(0.12, t);
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
 
   noise.connect(filter);
   filter.connect(noiseGain);
   noiseGain.connect(ctx.destination);
   noise.start(t);
 
-  // 2. Tono 1: Bell Note (A6 ~ 1760 Hz) - Entrada rápida
-  const osc1 = ctx.createOscillator();
-  const g1 = ctx.createGain();
-  osc1.type = 'sine';
-  osc1.frequency.setValueAtTime(1760, t + 0.04);
-  g1.gain.setValueAtTime(0.2, t + 0.04);
-  g1.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
-  osc1.connect(g1);
-  g1.connect(ctx.destination);
-  osc1.start(t + 0.04);
-  osc1.stop(t + 0.3);
+  // 2. Impacto metálico ("Cha")
+  const oscImpact = ctx.createOscillator();
+  const impactGain = ctx.createGain();
+  oscImpact.type = 'triangle';
+  oscImpact.frequency.setValueAtTime(1200, t);
+  oscImpact.frequency.exponentialRampToValueAtTime(400, t + 0.05);
+  impactGain.gain.setValueAtTime(0.15, t);
+  impactGain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+  oscImpact.connect(impactGain);
+  impactGain.connect(ctx.destination);
+  oscImpact.start(t);
+  oscImpact.stop(t + 0.05);
 
-  // 3. Tono 2: Bell Note Aguda (E7 ~ 2637 Hz) - Campana principal "CHING!"
-  const osc2 = ctx.createOscillator();
-  const g2 = ctx.createGain();
-  osc2.type = 'sine';
-  osc2.frequency.setValueAtTime(2637, t + 0.1);
-  g2.gain.setValueAtTime(0.3, t + 0.1);
-  g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
-  osc2.connect(g2);
-  g2.connect(ctx.destination);
-  osc2.start(t + 0.1);
-  osc2.stop(t + 0.8);
+  // 3. Campana principal metálica aguda ("Ching!")
+  // Tono fundamental ~2093 Hz (C7) y armónico inarmónico para sonido a metal real
+  const frecs = [2093, 4186, 5232];
+  const ganancias = [0.25, 0.12, 0.06];
+
+  frecs.forEach((frec, idx) => {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(frec, t + 0.06);
+
+    g.gain.setValueAtTime(ganancias[idx], t + 0.06);
+    // Caída con resonancia larga
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+
+    osc.connect(g);
+    g.connect(ctx.destination);
+    osc.start(t + 0.06);
+    osc.stop(t + 0.9);
+  });
 }
 
-// Se ejecuta si el canje fue exitoso tras el envío del formulario POST
 <?php if ($canje_exitoso): ?>
   document.addEventListener("DOMContentLoaded", () => {
     reproducirCajaRegistradora();
