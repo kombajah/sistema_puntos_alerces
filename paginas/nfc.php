@@ -108,7 +108,7 @@ function reproducirSonidoMoneda(repeticiones = 1) {
     const ctx = new AudioCtx();
 
     for (let i = 0; i < repeticiones; i++) {
-        const tiempoInicio = ctx.currentTime + (i * 0.35); // 350ms de pausa entre tonos
+        const tiempoInicio = ctx.currentTime + (i * 0.35);
 
         // Nota 1: B4 (987.77 Hz)
         const osc1 = ctx.createOscillator();
@@ -136,7 +136,6 @@ function reproducirSonidoMoneda(repeticiones = 1) {
     }
 }
 
-// Disparar sonido si la inserción en PHP fue exitosa
 <?php if ($puntos_asignados > 0): ?>
     document.addEventListener("DOMContentLoaded", () => {
         reproducirSonidoMoneda(<?= $puntos_asignados ?>);
@@ -158,7 +157,7 @@ function validar(){
 }
 
 async function cargar(codigo){
-    if (ocupado) return false; 
+    if (ocupado || !codigo) return false; 
     ocupado = true;
     try {
         const r = await fetch("buscar_alumno.php?uid=" + encodeURIComponent(codigo));
@@ -181,6 +180,28 @@ async function cargar(codigo){
     }
 }
 
+// Extrae el UID o los datos NDEF grabados en la tarjeta
+function extraerCodigoNFC(event) {
+    // 1. Probar UID o Serial Number
+    if (event.serialNumber) {
+        return event.serialNumber.replace(/:/g, '').toUpperCase();
+    }
+    
+    // 2. Si no hay serialNumber, leer registros NDEF cargados
+    if (event.message && event.message.records) {
+        for (const record of event.message.records) {
+            if (record.recordType === "text") {
+                const textDecoder = new TextDecoder(record.encoding || "utf-8");
+                return textDecoder.decode(record.data).trim();
+            } else if (record.recordType === "url") {
+                const textDecoder = new TextDecoder();
+                return textDecoder.decode(record.data).trim();
+            }
+        }
+    }
+    return null;
+}
+
 async function iniciarEscaneo(){
     await detenerQR();
     if (!("NDEFReader" in window)) { 
@@ -190,7 +211,17 @@ async function iniciarEscaneo(){
     try {
         if (!ndef) { 
             ndef = new NDEFReader(); 
-            ndef.addEventListener("reading", ({serialNumber}) => cargar(serialNumber)); 
+            ndef.addEventListener("reading", (event) => {
+                const codigo = extraerCodigoNFC(event);
+                if (codigo) {
+                    cargar(codigo);
+                } else {
+                    alert("Se detectó la tarjeta pero no se pudo obtener un identificador o texto válido.");
+                }
+            });
+            ndef.addEventListener("readingerror", () => {
+                alert("Error al leer la tarjeta NFC. Inténtalo de nuevo.");
+            });
         }
         await ndef.scan();
         document.getElementById('estado').innerText = "Escaneando... acerca la tarjeta ahora.";
