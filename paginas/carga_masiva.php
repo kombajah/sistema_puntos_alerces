@@ -15,7 +15,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $resultado = ['ok'=>0, 'errores'=>[['linea'=>0,'motivo'=>'No se pudo leer el archivo.']]];
     } else {
       $bom = fread($fh, 3); if ($bom !== "\xEF\xBB\xBF") rewind($fh);
-      $header = fgetcsv($fh, 0, ',');
+      
+      // Detectar el delimitador (, o ;) según la primera línea
+      $linea_prueba = fgets($fh);
+      $delimitador = (substr_count($linea_prueba, ';') >= substr_count($linea_prueba, ',')) ? ';' : ',';
+      
+      // Volver al inicio después del BOM para procesar los datos
+      fseek($fh, $bom === "\xEF\xBB\xBF" ? 3 : 0);
+
+      $header = fgetcsv($fh, 0, $delimitador);
       if (!$header) {
         $resultado = ['ok'=>0, 'errores'=>[['linea'=>1,'motivo'=>'Archivo vacío o con formato inválido.']]];
       } else {
@@ -26,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           $resultado = ['ok'=>0, 'errores'=>[['linea'=>1,'motivo'=>'Faltan columnas obligatorias: '.implode(', ', $faltan)]]];
         } else {
           $ok = 0; $errores = []; $linea = 1;
-          while (($fila = fgetcsv($fh, 0, ',')) !== false) {
+          while (($fila = fgetcsv($fh, 0, $delimitador)) !== false) {
             $linea++;
             if (count(array_filter($fila, fn($v) => trim((string)$v) !== '')) === 0) continue; // fila vacía
             try {
@@ -97,7 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <input type="file" name="archivo" accept=".csv" class="form-control" style="max-width:320px" required>
       <button class="btn btn-primary">Cargar alumnos</button>
     </form>
-    <small class="text-muted d-block mt-2">¿Tienes un archivo Excel (.xlsx)? Ábrelo y usa "Guardar como" → CSV (delimitado por comas) antes de subirlo.</small>
+    <small class="text-muted d-block mt-2">¿Tienes un archivo Excel (.xlsx)? Ábrelo y usa "Guardar como" → CSV (delimitado por comas o punto y coma) antes de subirlo.</small>
   </div>
 
   <?php if ($resultado): ?>
