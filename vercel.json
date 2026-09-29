@@ -9,6 +9,9 @@
     { "src": "maestros.php", "use": "vercel-php@0.7.4" },
     { "src": "buscar_alumno.php", "use": "vercel-php@0.7.4" },
     { "src": "salir.php", "use": "vercel-php@0.7.4" },
+    { "src": "carga_masiva.php", "use": "vercel-php@0.7.4" },
+    { "src": "tarjetas.php", "use": "vercel-php@0.7.4" },
+    { "src": "tarjetas_imprimir.php", "use": "vercel-php@0.7.4" },
     { "src": "qr.php", "use": "vercel-php@0.7.4" }
   ],
   "routes": [
