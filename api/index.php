@@ -3,16 +3,23 @@
 // /paginas y se sirven desde aquí (require interno), para no superar el límite de
 // Funciones Serverless del plan Hobby (12). Ver vercel.json.
 require_once __DIR__ . '/../paginas/conexion.php';
+
+$ruta = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+$pagina = basename($ruta);
+
+// --- Excepción pública para apoderados (no requiere inicio de sesión) ---
+if ($pagina === 'reporte_apoderado.php') {
+    require __DIR__ . '/../paginas/reporte_apoderado.php';
+    exit;
+}
+
 iniciar_sesion();
 
 $permitidas = [
   'reporte.php','nfc.php','canje.php','historico.php','contenido.php','maestros.php',
   'tarjetas.php','tarjetas_imprimir.php','carga_masiva.php','plantilla_alumnos.php',
-  'qr.php','buscar_alumno.php','instalar.php','salir.php',
+  'qr.php','buscar_alumno.php','instalar.php','salir.php','reporte_apoderado.php'
 ];
-
-$ruta = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
-$pagina = basename($ruta);
 
 if (in_array($pagina, $permitidas, true)) {
   require __DIR__ . '/../paginas/' . $pagina;
