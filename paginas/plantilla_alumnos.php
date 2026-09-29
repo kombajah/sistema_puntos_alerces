@@ -2,20 +2,20 @@
 require_once 'conexion.php'; 
 requiere_login();
 
-header('Content-Type: text/csv; charset=utf-8');
+// Encabezados HTTP indicando codificación Windows-1252 (ANSI)
+header('Content-Type: text/csv; charset=Windows-1252');
 header('Content-Disposition: attachment; filename="plantilla_alumnos.csv"');
 
-// 1. Marca UTF-8 BOM para caracteres especiales (tildes, ñ)
-echo "\xEF\xBB\xBF";
+// 1. Definir el contenido del CSV con las instrucciones para Excel
+$lineas = [];
+$lineas[] = "sep=;";
+$lineas[] = "docente_usuario;asignatura;curso;alumno;nfc_uid";
+$lineas[] = 'jperez;Lenguaje;"1ro Básico A";"Cristofer Morales";';
+$lineas[] = 'jperez;Lenguaje;"1ro Básico A";"Ana Pérez";04:AA:BB:CC';
+$lineas[] = 'jperez;Matemática;"1ro Básico A";"Cristofer Morales";';
 
-// 2. Instrucción explícita para que Excel aplique las columnas automáticamente
-echo "sep=;\n";
+$contenido = implode("\n", $lineas);
 
-// 3. Encabezados de la plantilla
-echo "docente_usuario;asignatura;curso;alumno;nfc_uid\n";
-
-// 4. Filas de ejemplo
-echo 'jperez;Lenguaje;"1ro Básico A";"Cristofer Morales";' . "\n";
-echo 'jperez;Lenguaje;"1ro Básico A";"Ana Pérez";04:AA:BB:CC' . "\n";
-echo 'jperez;Matemática;"1ro Básico A";"Cristofer Morales";' . "\n";
+// 2. Convertir la codificación de UTF-8 a Windows-1252 (ANSI) para Excel
+echo mb_convert_encoding($contenido, 'Windows-1252', 'UTF-8');
 exit;
