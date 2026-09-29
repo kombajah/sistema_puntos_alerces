@@ -89,12 +89,14 @@ if ($idsCursos) {
   $s->bind_param(str_repeat('i',count($idsCursos)), ...$idsCursos);$s->execute();
   $alumnos =$s->get_result()->fetch_all(MYSQLI_ASSOC);
 }
+
 $ed = (int)($_GET['editar'] ?? 0);
 
 // Detectar esquema y dominio base para construir la URL del apoderado
 $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
 $host = $_SERVER['HTTP_HOST'];
-$baseUrl = $protocol . $host . '/paginas/reporte_apoderado.php?token=';
+$dir = rtrim(dirname($_SERVER['PHP_SELF']), '/\\');
+$baseUrl = $protocol . $host . $dir . '/reporte_apoderado.php?token=';
 ?>
 <!DOCTYPE html><html lang="es"><head><title>Contenido</title><?php include 'head.php'; ?>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script></head>
