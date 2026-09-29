@@ -1,13 +1,14 @@
 <?php
 require_once 'conexion.php'; requiere_login();
-$mensaje='';$error='';
+$mensaje=''; $error='';
 function nuevo_qr(){ return bin2hex(random_bytes(6)); }
-function es_mio_curso($conn,$cid){$s=$conn->prepare("SELECT docente_id FROM cursos WHERE id=?"); $s->bind_param("i",$cid);$s->execute();
+function es_mio_curso($conn,$cid){
+  $s=$conn->prepare("SELECT docente_id FROM cursos WHERE id=?"); $s->bind_param("i",$cid); $s->execute();
   $r=$s->get_result()->fetch_assoc();
-  return $r && (es_admin() \vert{}\vert{} (int)$r['docente_id']===docente_id());
+  return $r && (es_admin() || (int)$r['docente_id']===docente_id());
 }
 function cupo($conn,$cid,$excluir=0){
-  $s=$conn->prepare("SELECT COUNT(*) t FROM alumnos WHERE curso_id=? AND id<>?"); $s->bind_param("ii",$cid,$excluir);$s->execute();
+  $s=$conn->prepare("SELECT COUNT(*) t FROM alumnos WHERE curso_id=? AND id<>?"); $s->bind_param("ii",$cid,$excluir); $s->execute();
   return $s->get_result()->fetch_assoc()['t'] < 50;
 }
 
