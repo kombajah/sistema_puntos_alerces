@@ -4,6 +4,7 @@ requiere_login();
 
 $mensaje = ''; 
 $error = '';
+$puntos_asignados = 0; // Variable para controlar las repeticiones del sonido en JS
 
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['asignar_puntos'])) {
     $alumno = (int)($_POST['alumno_id'] ?? 0);
@@ -27,6 +28,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['asignar_puntos'])) {
         $s->execute();
 
         if ($s->affected_rows > 0) {
+            $puntos_asignados = $pts; // Guardar los puntos para el audio
+            
             // Consultar una frase de refuerzo positivo aleatoria de la base de datos
             $refuerzo = '';
             $s_frase = $conn->prepare("SELECT frase FROM frases_refuerzo WHERE categoria_id = ? ORDER BY RAND() LIMIT 1");
@@ -97,6 +100,48 @@ $cats = $conn->query("SELECT * FROM categorias");
 
 <script>
 let ndef = null, html5QrcodeScanner = null, ocupado = false;
+
+// --- SINTETIZADOR DE SONIDO MONEDA MARIO BROS ---
+function reproducirSonidoMoneda(repeticiones = 1) {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+
+    for (let i = 0; i < repeticiones; i++) {
+        const tiempoInicio = ctx.currentTime + (i * 0.35); // 350ms de pausa entre tonos
+
+        // Nota 1: B4 (987.77 Hz)
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'square';
+        osc1.frequency.setValueAtTime(987.77, tiempoInicio);
+        gain1.gain.setValueAtTime(0.1, tiempoInicio);
+        gain1.gain.exponentialRampToValueAtTime(0.01, tiempoInicio + 0.08);
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+        osc1.start(tiempoInicio);
+        osc1.stop(tiempoInicio + 0.08);
+
+        // Nota 2: E5 (1318.51 Hz)
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'square';
+        osc2.frequency.setValueAtTime(1318.51, tiempoInicio + 0.08);
+        gain2.gain.setValueAtTime(0.1, tiempoInicio + 0.08);
+        gain2.gain.exponentialRampToValueAtTime(0.001, tiempoInicio + 0.38);
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.start(tiempoInicio + 0.08);
+        osc2.stop(tiempoInicio + 0.38);
+    }
+}
+
+// Disparar sonido si la inserción en PHP fue exitosa
+<?php if ($puntos_asignados > 0): ?>
+    document.addEventListener("DOMContentLoaded", () => {
+        reproducirSonidoMoneda(<?= $puntos_asignados ?>);
+    });
+<?php endif; ?>
 
 function seleccionarPunto(v, el){
     document.querySelectorAll('.btn-punto').forEach(b => b.classList.remove('active'));
