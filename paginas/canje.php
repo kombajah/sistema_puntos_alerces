@@ -106,7 +106,7 @@ function cst(){document.getElementById('pb')&&(document.getElementById('costo').
 
 // Reproducción de archivo de audio real de caja registradora
 function reproducirCajaRegistradora() {
-  const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3');
+  const audio = new Audio('sonidos/caja.mp3');
   audio.volume = 0.8;
   audio.play().catch(e => {
     console.log("El navegador bloqueó la reproducción automática o falló la carga: ", e);
