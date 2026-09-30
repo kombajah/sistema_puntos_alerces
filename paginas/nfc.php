@@ -48,8 +48,55 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['asignar_puntos'])) {
     }
 }
 
+$puntos_masivos_alumnos = 0; // para el sonido: cuántos alumnos recibieron puntos en la asignación masiva
+
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['asignar_masivo'])) {
+    $curso = (int)($_POST['curso_id_masivo'] ?? 0);
+    $cat   = (int)($_POST['categoria_id_masivo'] ?? 0);
+    $pts   = (int)($_POST['puntos_masivo'] ?? 0);
+
+    $s = $conn->prepare("SELECT docente_id FROM cursos WHERE id=?");
+    $s->bind_param("i", $curso); $s->execute();
+    $c = $s->get_result()->fetch_assoc();
+
+    if (!$c || (!es_admin() && (int)$c['docente_id'] !== docente_id())) {
+        $error = "Curso no válido.";
+    } elseif (!in_array($pts, [1, 2, 3], true)) {
+        $error = "Puntaje inválido.";
+    } else {
+        $s = $conn->prepare("SELECT id FROM categorias WHERE id=?");
+        $s->bind_param("i", $cat); $s->execute();
+        if (!$s->get_result()->fetch_assoc()) {
+            $error = "Motivo no válido.";
+        } else {
+            $s = $conn->prepare(
+                "INSERT INTO registro_puntos (alumno_id, categoria_id, puntos)
+                 SELECT a.id, ?, ? FROM alumnos a WHERE a.curso_id = ?"
+            );
+            $s->bind_param("iii", $cat, $pts, $curso);
+            $s->execute();
+            $puntos_masivos_alumnos = $s->affected_rows;
+            if ($puntos_masivos_alumnos > 0) {
+                $mensaje = "¡Se asignaron $pts pt(s) a los $puntos_masivos_alumnos alumnos del curso!";
+            } else {
+                $error = "Ese curso no tiene alumnos registrados.";
+            }
+        }
+    }
+}
+
+// Cursos del docente (o todos, si es admin), para el formulario de asignación masiva
+$types=''; $vals=[];
+$sqlCursosMasivo = "SELECT c.id, c.nombre, ag.nombre asignatura, m.usuario docente,
+  (SELECT COUNT(*) FROM alumnos WHERE curso_id=c.id) total_alumnos
+  FROM cursos c JOIN asignaturas ag ON ag.id=c.asignatura_id JOIN maestros m ON m.id=c.docente_id WHERE 1=1";
+filtro_docente($sqlCursosMasivo,$types,$vals,'c');
+$s=$conn->prepare($sqlCursosMasivo." ORDER BY c.nombre"); if($vals) $s->bind_param($types,...$vals); $s->execute();
+$cursosMasivo = $s->get_result()->fetch_all(MYSQLI_ASSOC);
+
 // Obtener categorías usando MySQLi
 $cats = $conn->query("SELECT * FROM categorias");
+$catsMasivo = $conn->query("SELECT * FROM categorias");
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -93,6 +140,37 @@ $cats = $conn->query("SELECT * FROM categorias");
             <input type="hidden" name="puntos" id="input_puntos">
             <button type="submit" name="asignar_puntos" class="btn btn-primary w-100 rounded-pill fs-5" style="background:#2e44d3">Confirmar Asignación</button>
         </form>
+    </div>
+
+    <div class="card p-4 mt-3 shadow-sm">
+        <h5 class="text-primary mb-1">👥 Asignar puntaje a todo el curso</h5>
+        <p class="text-muted small">Útil para actividades grupales: todos los alumnos del curso reciben el mismo puntaje por el mismo motivo, de una sola vez.</p>
+        <?php if(!$cursosMasivo): ?>
+          <p class="text-muted">Primero crea un curso con alumnos en Contenido.</p>
+        <?php else: ?>
+        <form method="POST" onsubmit="return validarMasivo()">
+            <select name="curso_id_masivo" class="form-select mb-3" required>
+                <option value="" disabled selected>Elige un curso...</option>
+                <?php foreach($cursosMasivo as $c): ?>
+                    <option value="<?= (int)$c['id'] ?>"><?= h($c['nombre']) ?> · <?= h($c['asignatura']) ?><?= es_admin()?' — '.h($c['docente']):'' ?> (<?= (int)$c['total_alumnos'] ?> alumnos)</option>
+                <?php endforeach; ?>
+            </select>
+            <select name="categoria_id_masivo" class="form-select mb-3" required>
+                <option value="" disabled selected>Elige un motivo...</option>
+                <?php while($r = $catsMasivo->fetch_assoc()): ?>
+                    <option value="<?= (int)$r['id'] ?>"><?= h($r['nombre']) ?></option>
+                <?php endwhile; ?>
+            </select>
+            <label class="form-label">Cantidad de puntos:</label>
+            <div class="d-flex justify-content-between mb-4">
+                <?php foreach([1,2,3] as $n): ?>
+                    <button type="button" class="btn-punto" onclick="seleccionarPuntoMasivo(<?= $n ?>, this)"><?= $n ?> pt<?= $n>1?'s':'' ?></button>
+                <?php endforeach; ?>
+            </div>
+            <input type="hidden" name="puntos_masivo" id="input_puntos_masivo">
+            <button type="submit" name="asignar_masivo" class="btn w-100 rounded-pill fs-5 text-white" style="background:#d99a5b" onclick="return confirm('¿Asignar este puntaje a TODOS los alumnos del curso elegido?')">Asignar a todo el curso</button>
+        </form>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -141,11 +219,22 @@ function reproducirSonidoMoneda(repeticiones = 1) {
         reproducirSonidoMoneda(<?= $puntos_asignados ?>);
     });
 <?php endif; ?>
+<?php if ($puntos_masivos_alumnos > 0): ?>
+    document.addEventListener("DOMContentLoaded", () => {
+        reproducirSonidoMoneda(1);
+    });
+<?php endif; ?>
 
 function seleccionarPunto(v, el){
-    document.querySelectorAll('.btn-punto').forEach(b => b.classList.remove('active'));
+    el.closest('form').querySelectorAll('.btn-punto').forEach(b => b.classList.remove('active'));
     el.classList.add('active'); 
     document.getElementById('input_puntos').value = v;
+}
+
+function seleccionarPuntoMasivo(v, el){
+    el.closest('form').querySelectorAll('.btn-punto').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('input_puntos_masivo').value = v;
 }
 
 function validar(){ 
@@ -154,6 +243,14 @@ function validar(){
         return false; 
     } 
     return true; 
+}
+
+function validarMasivo(){
+    if(!document.getElementById('input_puntos_masivo').value){
+        alert('Selecciona 1, 2 o 3 puntos');
+        return false;
+    }
+    return true;
 }
 
 async function cargar(codigo){

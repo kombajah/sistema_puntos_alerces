@@ -108,3 +108,16 @@ ALTER TABLE canjes
 -- Columna usada por reporte_apoderado.php (detectada en el proyecto; se agrega aquí
 -- para que una instalación nueva desde este schema.sql quede completa).
 ALTER TABLE alumnos ADD COLUMN qr_apoderado VARCHAR(40) UNIQUE NULL;
+
+-- Descripción libre de la meta (qué se espera lograr), visible en Reporte y en Metas.
+ALTER TABLE metas ADD COLUMN descripcion VARCHAR(255) NULL;
+
+-- Tabla usada por nfc.php para mostrar una frase de refuerzo positivo aleatoria
+-- al asignar puntos (detectada en el proyecto; se agrega aquí para que una
+-- instalación nueva desde este schema.sql quede completa).
+CREATE TABLE IF NOT EXISTS frases_refuerzo (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  categoria_id INT NOT NULL,
+  frase VARCHAR(255) NOT NULL,
+  FOREIGN KEY (categoria_id) REFERENCES categorias(id) ON DELETE CASCADE
+);

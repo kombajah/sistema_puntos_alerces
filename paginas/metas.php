@@ -19,15 +19,17 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
   if (isset($_POST['crear_meta'])) {
     $cid = (int)$_POST['curso_id'];
     $obj = (int)$_POST['puntos_objetivo'];
+    $desc = mb_substr(trim($_POST['descripcion'] ?? ''), 0, 255);
     $lunes = lunes_de_semana_iso(trim($_POST['semana'] ?? ''));
     if (!es_mi_curso_meta($conn,$cid)) $error = "Ese curso no te pertenece.";
     elseif (!$lunes) $error = "Elige una semana válida.";
     elseif ($obj < 1) $error = "El puntaje objetivo debe ser mayor a 0.";
     else {
       try {
-        $s = $conn->prepare("INSERT INTO metas (curso_id,semana_inicio,puntos_objetivo,creado_por) VALUES (?,?,?,?)");
+        $s = $conn->prepare("INSERT INTO metas (curso_id,semana_inicio,puntos_objetivo,descripcion,creado_por) VALUES (?,?,?,?,?)");
         $mid = docente_id();
-        $s->bind_param("isii", $cid, $lunes, $obj, $mid); $s->execute();
+        $descVal = $desc !== '' ? $desc : null;
+        $s->bind_param("isisi", $cid, $lunes, $obj, $descVal, $mid); $s->execute();
         $mensaje = "Meta creada.";
       } catch (mysqli_sql_exception $e) { $error = "Ya existe una meta para ese curso en esa semana."; }
     }
@@ -48,7 +50,7 @@ $s=$conn->prepare($sqlC." ORDER BY c.nombre"); if($vals) $s->bind_param($types,.
 $cursos = $s->get_result()->fetch_all(MYSQLI_ASSOC);
 
 $types=''; $vals=[];
-$sql = "SELECT mt.id, mt.semana_inicio, mt.puntos_objetivo, c.nombre curso, ag.nombre asignatura, m.usuario docente,
+$sql = "SELECT mt.id, mt.semana_inicio, mt.puntos_objetivo, mt.descripcion, c.nombre curso, ag.nombre asignatura, m.usuario docente,
   COALESCE((SELECT SUM(r.puntos) FROM registro_puntos r JOIN alumnos al ON al.id=r.alumno_id
             WHERE al.curso_id=c.id AND r.fecha >= mt.semana_inicio AND r.fecha < DATE_ADD(mt.semana_inicio, INTERVAL 7 DAY)),0) avance
   FROM metas mt JOIN cursos c ON c.id=mt.curso_id JOIN asignaturas ag ON ag.id=c.asignatura_id JOIN maestros m ON m.id=c.docente_id
@@ -80,6 +82,8 @@ $semanaActual = (new DateTime())->format('o-\WW');
       <div class="col-md-2"><label class="form-label small">Puntos meta</label>
         <input type="number" name="puntos_objetivo" class="form-control" min="1" value="20" required></div>
       <div class="col-md-2"><button name="crear_meta" class="btn btn-primary w-100">Crear meta</button></div>
+      <div class="col-12"><label class="form-label small">Descripción (qué se debe lograr)</label>
+        <input type="text" name="descripcion" class="form-control" maxlength="255" placeholder="Ej: Terminar la unidad 3 de fracciones con buena participación"></div>
     </form>
     <?php endif; ?>
   </div>
@@ -95,7 +99,8 @@ $semanaActual = (new DateTime())->format('o-\WW');
     <div class="border-top py-3">
       <div class="d-flex justify-content-between flex-wrap gap-2 mb-1">
         <div><strong><?= h($m['curso']) ?> · <?= h($m['asignatura']) ?></strong><?= es_admin()?' <span class="badge bg-secondary">'.h($m['docente']).'</span>':'' ?>
-          <div class="small text-muted"><?= $inicio->format('d/m') ?> — <?= $fin->format('d/m/Y') ?></div></div>
+          <div class="small text-muted"><?= $inicio->format('d/m') ?> — <?= $fin->format('d/m/Y') ?></div>
+          <?php if(!empty($m['descripcion'])): ?><div class="small fst-italic mt-1">📝 <?= h($m['descripcion']) ?></div><?php endif; ?></div>
         <div class="text-end">
           <span class="fw-bold"><?= (int)$m['avance'] ?> / <?= (int)$m['puntos_objetivo'] ?> pts</span>
           <form method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar esta meta?')">

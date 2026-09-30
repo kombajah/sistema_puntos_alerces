@@ -62,3 +62,11 @@ Autenticación Unificada: Todas las plataformas cloud (GitHub, Vercel y Aiven) e
 - Se agregó `qr_apoderado` a `schema.sql` (columna que ya usa `reporte_apoderado.php` en la base de datos en producción, pero que no estaba en el script de creación).
 
 Migración para bases ya existentes: `migracion_metas_opciones.sql`.
+
+## Novedades de esta versión
+- **Descripción de metas**: al crear una meta semanal ahora se puede escribir qué se espera lograr (ej. "Terminar la unidad 3 con buena participación"). Se muestra tanto en `metas.php` como en el resumen de "Metas de esta semana" de `reporte.php`.
+- **Tarjetas de apoderado**: en `tarjetas.php` hay un segundo botón "👪 Imprimir tarjetas de apoderado", que abre una hoja con el mismo diseño de las tarjetas de alumno pero marcada "APODERADO", con el nombre del alumno y el QR del apoderado (el mismo que ya genera Contenido, que al escanearlo abre `reporte_apoderado.php`). Los alumnos sin QR de apoderado generado quedan fuera de ese listado.
+- **Asignación masiva de puntos por curso**: en `nfc.php` se agregó una tarjeta "Asignar puntaje a todo el curso" — eliges curso, motivo y puntaje (1 a 3), y se registra ese puntaje para todos los alumnos del curso en una sola acción, con confirmación previa.
+- Se documentó en `schema.sql` la tabla `frases_refuerzo` (usada por `nfc.php` para las frases de refuerzo positivo), que ya existía en la base de datos en producción pero no estaba en el script de creación.
+
+Migración para bases ya existentes: `migracion_metas_desc_frases.sql`.

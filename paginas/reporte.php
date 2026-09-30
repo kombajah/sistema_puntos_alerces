@@ -24,7 +24,7 @@ arsort($totalesAsignatura);
 // --- Metas de la semana actual (widget) ---
 $hoy = new DateTime(); $lunesHoy = (clone $hoy)->modify('monday this week')->format('Y-m-d');
 $types=''; $vals=[];
-$sqlM = "SELECT mt.puntos_objetivo, c.nombre curso, ag.nombre asignatura,
+$sqlM = "SELECT mt.puntos_objetivo, mt.descripcion, c.nombre curso, ag.nombre asignatura,
   COALESCE((SELECT SUM(r.puntos) FROM registro_puntos r JOIN alumnos al ON al.id=r.alumno_id
             WHERE al.curso_id=c.id AND r.fecha >= mt.semana_inicio AND r.fecha < DATE_ADD(mt.semana_inicio, INTERVAL 7 DAY)),0) avance
   FROM metas mt JOIN cursos c ON c.id=mt.curso_id JOIN asignaturas ag ON ag.id=c.asignatura_id
@@ -64,6 +64,7 @@ uasort($filas, fn($x,$y)=>[$x['curso'],-$x['total']]<=>[$y['curso'],-$y['total']
     <?php foreach($metasSemana as $m): $pct = $m['puntos_objetivo']>0 ? min(100, round($m['avance']/$m['puntos_objetivo']*100)) : 0; $ok = $m['avance']>=$m['puntos_objetivo']; ?>
       <div class="mb-2">
         <div class="d-flex justify-content-between small"><span><?= h($m['curso']) ?> · <?= h($m['asignatura']) ?></span><span><?= (int)$m['avance'] ?> / <?= (int)$m['puntos_objetivo'] ?> pts</span></div>
+        <?php if(!empty($m['descripcion'])): ?><div class="small text-muted fst-italic">📝 <?= h($m['descripcion']) ?></div><?php endif; ?>
         <div style="background:#e6efe0;border-radius:8px;overflow:hidden;height:12px">
           <div style="width:<?= $pct ?>%;background:<?= $ok?'linear-gradient(90deg,#8fbf94,#4d7c50)':'linear-gradient(90deg,#d99a5b,#e7c9a9)' ?>;height:100%"></div>
         </div>
