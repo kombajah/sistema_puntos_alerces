@@ -24,7 +24,11 @@ $sql = "SELECT m.*, a.nombre alumno, c.nombre curso, ag.nombre asignatura FROM (
      FROM registro_puntos r JOIN categorias k ON k.id=r.categoria_id
    UNION ALL
    SELECT 'canje', x.id, x.alumno_id, x.fecha, -x.puntos_virtuales,
-     CONCAT('Canje por ', x.puntos_base, ' pt base', IF(x.observacion<>'', CONCAT(': ', x.observacion), ''))
+     CONCAT(
+       CASE WHEN x.opcion_id IS NOT NULL THEN CONCAT('Canje por: ', COALESCE(x.nombre_opcion,'ítem eliminado'))
+            ELSE CONCAT('Canje por ', x.puntos_base, ' pt base') END,
+       IF(x.observacion<>'', CONCAT(': ', x.observacion), '')
+     )
      FROM canjes x) m
   JOIN alumnos a ON a.id=m.alumno_id JOIN cursos c ON c.id=a.curso_id JOIN asignaturas ag ON ag.id=c.asignatura_id
   WHERE 1=1 $where";

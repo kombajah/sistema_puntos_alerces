@@ -76,3 +76,35 @@ CREATE TABLE IF NOT EXISTS sesiones (
   datos MEDIUMTEXT NOT NULL,
   expira DATETIME NOT NULL
 );
+
+-- Metas semanales de puntos por curso.
+CREATE TABLE IF NOT EXISTS metas (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  curso_id INT NOT NULL,
+  semana_inicio DATE NOT NULL,       -- lunes de la semana de la meta
+  puntos_objetivo INT NOT NULL,
+  creado_por INT NOT NULL,
+  fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_curso_semana (curso_id, semana_inicio),
+  FOREIGN KEY (curso_id) REFERENCES cursos(id) ON DELETE CASCADE,
+  FOREIGN KEY (creado_por) REFERENCES maestros(id)
+);
+
+-- Opciones de canje (premios/ítems), además del canje por puntos base existente.
+CREATE TABLE IF NOT EXISTS opciones_canje (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  docente_id INT NOT NULL,
+  nombre VARCHAR(100) NOT NULL,
+  costo_puntos INT NOT NULL,
+  activa TINYINT(1) NOT NULL DEFAULT 1,
+  FOREIGN KEY (docente_id) REFERENCES maestros(id) ON DELETE CASCADE
+);
+
+ALTER TABLE canjes
+  ADD COLUMN opcion_id INT NULL,
+  ADD COLUMN nombre_opcion VARCHAR(100) NULL,
+  ADD FOREIGN KEY (opcion_id) REFERENCES opciones_canje(id) ON DELETE SET NULL;
+
+-- Columna usada por reporte_apoderado.php (detectada en el proyecto; se agrega aquí
+-- para que una instalación nueva desde este schema.sql quede completa).
+ALTER TABLE alumnos ADD COLUMN qr_apoderado VARCHAR(40) UNIQUE NULL;

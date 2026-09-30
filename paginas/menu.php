@@ -1,8 +1,9 @@
-<?php $act = basename($_SERVER['PHP_SELF']); function lk($f,$t,$a){ return "<a href='$f' class='text-white text-decoration-none small ".($a==$f?'fw-bold':'')."'>$t</a>"; } ?>
+<?php $act = basename(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH)); function lk($f,$t,$a){ return "<a href='$f' class='text-white text-decoration-none small ".($a==$f?'fw-bold':'')."'>$t</a>"; } ?>
 <div class="header-app d-flex justify-content-around flex-wrap gap-2 pb-2">
   <?= lk('reporte.php','📊 Reporte',$act) ?>
   <?= lk('nfc.php','🛜 NFC',$act) ?>
   <?= lk('canje.php','🎁 Canje',$act) ?>
+  <?= lk('metas.php','🎯 Metas',$act) ?>
   <?= lk('historico.php','🕘 Histórico',$act) ?>
   <?= lk('tarjetas.php','🪪 Tarjetas',$act) ?>
   <?= lk('contenido.php','⚙️ Contenido',$act) ?>

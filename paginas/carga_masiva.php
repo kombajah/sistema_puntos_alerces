@@ -39,6 +39,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (count(array_filter($fila, fn($v) => trim((string)$v) !== '')) === 0) continue; // fila vacía
             try {
               $docU = trim($fila[$idx['docente_usuario']] ?? '');
+              // Si quien sube el archivo no es admin, solo puede cargar a su propio nombre,
+              // sin importar lo que diga la columna docente_usuario (evita que un docente
+              // registre alumnos a nombre de otro).
+              if (!es_admin()) $docU = $_SESSION['maestro'];
               $agN  = trim($fila[$idx['asignatura']] ?? '');
               $curN = trim($fila[$idx['curso']] ?? '');
               $alN  = trim($fila[$idx['alumno']] ?? '');
@@ -99,7 +103,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <div class="card p-4 shadow-sm mb-3">
     <h4 class="text-primary mb-3">Carga masiva de alumnos</h4>
     <p class="text-muted">Sube un archivo <b>.csv</b> con las columnas <code>docente_usuario, asignatura, curso, alumno, nfc_uid</code>.
-      Si la asignatura o el curso no existen para ese docente, se crean automáticamente. La columna <code>nfc_uid</code> es opcional.</p>
+      Si la asignatura o el curso no existen para ese docente, se crean automáticamente. La columna <code>nfc_uid</code> es opcional.
+      <?php if(!es_admin()): ?><br><strong>Como no eres administrador, la columna <code>docente_usuario</code> se ignora: todo se carga a tu propio nombre.</strong><?php endif; ?></p>
     <a href="plantilla_alumnos.php" class="btn btn-outline-primary mb-3">⬇️ Descargar plantilla CSV</a>
     <form method="POST" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap">
       <input type="file" name="archivo" accept=".csv" class="form-control" style="max-width:320px" required>

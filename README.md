@@ -53,3 +53,12 @@ Despliegue Continuo (Vercel): Vercel detecta automáticamente cada cambio subido
 Persistencia de Datos (Aiven.io): La aplicación desplegada en Vercel se conecta mediante las credenciales de base de datos al servicio MySQL administrado en Aiven.io (mysql-sistema-nfc).
 
 Autenticación Unificada: Todas las plataformas cloud (GitHub, Vercel y Aiven) están centralizadas e integradas bajo la cuenta de correo alexgaratenecunir@gmail.com.
+## Novedades de esta versión
+- **Gráficos de barras en Reporte**: puntos totales por curso y por asignatura (barras estilo bosque pastel, sin librerías externas).
+- **Metas semanales por curso** (`metas.php`): crea una meta (curso + semana + puntaje objetivo), con barra de avance calculada en base a los puntos "ganado" registrados esa semana. `reporte.php` muestra un resumen de las metas de la semana en curso.
+- **Opciones de canje** (en `canje.php`): además del canje por puntos base existente, ahora se pueden crear premios/ítems propios (nombre + costo en puntos virtuales), activarlos/desactivarlos o eliminarlos, y canjearlos por alumno. El histórico ahora distingue "Canje por: {ítem}" de "Canje por N pt base".
+- **Corrección de seguridad**: en `carga_masiva.php` ya no es posible que un docente (no administrador) registre alumnos a nombre de otro docente escribiendo su usuario en la columna `docente_usuario` del CSV — para no-admins esa columna ahora se ignora y siempre se usa su propio usuario.
+- **Corrección menor**: el resaltado del menú activo usaba `PHP_SELF`, que con el enrutador de un solo archivo (`api/index.php`) siempre apuntaba a la misma página; ahora usa la URL real solicitada.
+- Se agregó `qr_apoderado` a `schema.sql` (columna que ya usa `reporte_apoderado.php` en la base de datos en producción, pero que no estaba en el script de creación).
+
+Migración para bases ya existentes: `migracion_metas_opciones.sql`.

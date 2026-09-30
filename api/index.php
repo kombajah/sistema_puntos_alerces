@@ -18,7 +18,7 @@ iniciar_sesion();
 $permitidas = [
   'reporte.php','nfc.php','canje.php','historico.php','contenido.php','maestros.php',
   'tarjetas.php','tarjetas_imprimir.php','carga_masiva.php','plantilla_alumnos.php',
-  'qr.php','buscar_alumno.php','instalar.php','salir.php','reporte_apoderado.php'
+  'qr.php','buscar_alumno.php','instalar.php','salir.php','reporte_apoderado.php','metas.php'
 ];
 
 if (in_array($pagina, $permitidas, true)) {
