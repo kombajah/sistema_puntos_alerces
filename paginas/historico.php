@@ -16,7 +16,7 @@ $where = '';
 if ($fc) { $where .= " AND c.id=?"; $types.='i'; $vals[]=$fc; }
 if ($fa) { $where .= " AND a.id=?"; $types.='i'; $vals[]=$fa; }
 $sql = "SELECT m.*, a.nombre alumno, c.nombre curso, ag.nombre asignatura, ".sql_nombre_maestro('p')." profesor FROM (
-   SELECT 'ganado' tipo, r.id, r.alumno_id, r.fecha, r.puntos delta, k.nombre detalle, r.maestro_id, r.asignatura_id
+   SELECT 'ganado' tipo, r.id, r.alumno_id, r.fecha, r.puntos delta, k.nombre detalle, r.maestro_id, r.asignatura_id, r.masivo
      FROM registro_puntos r JOIN categorias k ON k.id=r.categoria_id
    UNION ALL
    SELECT 'canje', x.id, x.alumno_id, x.fecha, -x.puntos_virtuales,
@@ -25,7 +25,7 @@ $sql = "SELECT m.*, a.nombre alumno, c.nombre curso, ag.nombre asignatura, ".sql
             ELSE CONCAT('Canje por ', x.puntos_base, ' pt base') END,
        IF(x.observacion<>'', CONCAT(': ', x.observacion), '')
      )
-     , x.maestro_id, x.asignatura_id
+     , x.maestro_id, x.asignatura_id, 0
      FROM canjes x) m
   JOIN alumnos a ON a.id=m.alumno_id JOIN cursos c ON c.id=a.curso_id
   LEFT JOIN asignaturas ag ON ag.id=m.asignatura_id
@@ -70,7 +70,7 @@ usort($mov, fn($x,$y)=>[$y['fecha'],$y['id']]<=>[$x['fecha'],$x['id']]);
       <?php foreach($mov as $m): ?>
         <tr><td><?= h(date('d/m/Y H:i', strtotime($m['fecha']))) ?></td><td><?= h($m['curso']) ?></td><td><?= $m['asignatura'] ? h($m['asignatura']) : '—' ?></td><td><?= h($m['alumno']) ?></td><td><?= $m['profesor'] ? h($m['profesor']) : '—' ?></td>
           <td><?= $m['tipo']=='ganado' ? '<span class="badge bg-success">Ganado</span>' : '<span class="badge bg-warning text-dark">Canje</span>' ?></td>
-          <td><?= h($m['detalle']) ?></td>
+          <td><?= h($m['detalle']) ?><?= !empty($m['masivo']) ? ' <span class="badge bg-secondary">👥 Asignación masiva (todo el curso)</span>' : '' ?></td>
           <td class="text-center <?= $m['delta']>0?'text-success':'text-danger' ?>"><strong><?= $m['delta']>0?'+':'' ?><?= (int)$m['delta'] ?></strong></td>
           <td class="text-center"><?= (int)$m['saldo'] ?></td></tr>
       <?php endforeach; if(!$mov) echo "<tr><td colspan='9' class='text-center text-muted'>Sin movimientos</td></tr>"; ?>

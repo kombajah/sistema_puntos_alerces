@@ -72,8 +72,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['asignar_masivo'])) {
         } else {
             $mid = docente_id(); $asig = asignatura_docente($conn);
             $s = $conn->prepare(
-                "INSERT INTO registro_puntos (alumno_id, categoria_id, puntos, maestro_id, asignatura_id)
-                 SELECT a.id, ?, ?, ?, ? FROM alumnos a WHERE a.curso_id = ?"
+                "INSERT INTO registro_puntos (alumno_id, categoria_id, puntos, maestro_id, asignatura_id, masivo)
+                 SELECT a.id, ?, ?, ?, ?, 1 FROM alumnos a WHERE a.curso_id = ?"
             );
             $s->bind_param("iiiii", $cat, $pts, $mid, $asig, $curso);
             $s->execute();

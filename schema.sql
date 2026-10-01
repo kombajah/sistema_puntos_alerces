@@ -56,6 +56,7 @@ CREATE TABLE registro_puntos (
   fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   maestro_id INT NULL,
   asignatura_id INT NULL,
+  masivo TINYINT(1) NOT NULL DEFAULT 0,   -- 1 = asignado a todo el curso de una sola vez
   FOREIGN KEY (alumno_id) REFERENCES alumnos(id) ON DELETE CASCADE,
   FOREIGN KEY (categoria_id) REFERENCES categorias(id),
   FOREIGN KEY (maestro_id) REFERENCES maestros(id) ON DELETE SET NULL,

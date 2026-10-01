@@ -26,6 +26,7 @@ Ver `INSTRUCCIONES_AIVEN_VERCEL.md` para el detalle completo.
 - **Metas:** asociadas solo al curso. Cada meta muestra un label «👤 Profesor: …» junto a la descripción; cada profesor puede tener su propia meta por curso y semana, y solo el autor (o el administrador) puede eliminarla.
 - **NFC:** en «Asignar puntaje a todo el curso» el combo muestra solo el curso, y al asignar se reproduce un sonido de monedas (`sonidos/monedas.mp3`; puedes reemplazar ese archivo por el audio que prefieras).
 - **Reporte:** metas, tablas y gráfico por curso sin asignatura; el gráfico «por asignatura» suma los puntos registrados por los profesores de cada asignatura.
+- **Asignación masiva en el Histórico:** los puntos asignados a todo el curso quedan marcados con la etiqueta «👥 Asignación masiva (todo el curso)» en la columna Detalle. Requiere `migracion_asignacion_masiva.sql` si la base ya estaba migrada.
 - **Carga masiva y tarjetas:** el CSV ahora es `curso, alumno, nfc_uid` (las columnas `docente_usuario` y `asignatura` se ignoran); los filtros de asignatura/profesor de *Tarjetas* se eliminaron.
 
 **Base de datos:** instalación nueva → `schema.sql`. Base existente → respaldar y ejecutar **una vez** `migracion_v2026_modificaciones.sql`; luego revisar cursos con el mismo nombre que antes estaban repetidos por asignatura (query al final de la migración).
