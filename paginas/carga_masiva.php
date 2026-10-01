@@ -29,7 +29,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       } else {
         $header = array_map(fn($c) => strtolower(trim((string)$c)), $header);
         $idx = array_flip($header);
-        $faltan = array_diff(['docente_usuario','asignatura','curso','alumno'], array_keys($idx));
+        // Las columnas antiguas docente_usuario y asignatura (si vienen en el archivo) se ignoran.
+        $faltan = array_diff(['curso','alumno'], array_keys($idx));
         if ($faltan) {
           $resultado = ['ok'=>0, 'errores'=>[['linea'=>1,'motivo'=>'Faltan columnas obligatorias: '.implode(', ', $faltan)]]];
         } else {
@@ -38,49 +39,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $linea++;
             if (count(array_filter($fila, fn($v) => trim((string)$v) !== '')) === 0) continue; // fila vacía
             try {
-              $docU = trim($fila[$idx['docente_usuario']] ?? '');
-              // Si quien sube el archivo no es admin, solo puede cargar a su propio nombre,
-              // sin importar lo que diga la columna docente_usuario (evita que un docente
-              // registre alumnos a nombre de otro).
-              if (!es_admin()) $docU = $_SESSION['maestro'];
-              $agN  = trim($fila[$idx['asignatura']] ?? '');
               $curN = trim($fila[$idx['curso']] ?? '');
               $alN  = trim($fila[$idx['alumno']] ?? '');
               $nfc  = isset($idx['nfc_uid']) ? trim($fila[$idx['nfc_uid']] ?? '') : '';
-              if ($docU === '' || $agN === '' || $curN === '' || $alN === '') throw new Exception('Faltan datos obligatorios en la fila.');
+              if ($curN === '' || $alN === '') throw new Exception('Faltan datos obligatorios en la fila (curso y alumno).');
 
-              $s = $conn->prepare("SELECT id FROM maestros WHERE usuario=?");
-              $s->bind_param("s", $docU); $s->execute();
-              $doc = $s->get_result()->fetch_assoc();
-              if (!$doc) throw new Exception("El docente '$docU' no existe (créalo primero en Maestros).");
-              $did = (int)$doc['id'];
-
-              $s = $conn->prepare("SELECT id FROM asignaturas WHERE nombre=? AND docente_id=?");
-              $s->bind_param("si", $agN, $did); $s->execute();
-              $ag = $s->get_result()->fetch_assoc();
-              if ($ag) { $agId = (int)$ag['id']; }
-              else {
-                $s = $conn->prepare("INSERT INTO asignaturas (nombre,docente_id) VALUES (?,?)");
-                $s->bind_param("si", $agN, $did); $s->execute(); $agId = $conn->insert_id;
-              }
-
-              $s = $conn->prepare("SELECT id FROM cursos WHERE nombre=? AND asignatura_id=? AND docente_id=?");
-              $s->bind_param("sii", $curN, $agId, $did); $s->execute();
+              // El alumno se asocia solo al curso; si el curso no existe, se crea.
+              $s = $conn->prepare("SELECT id FROM cursos WHERE nombre=?");
+              $s->bind_param("s", $curN); $s->execute();
               $cur = $s->get_result()->fetch_assoc();
               if ($cur) { $curId = (int)$cur['id']; }
               else {
-                $s = $conn->prepare("INSERT INTO cursos (nombre,docente_id,asignatura_id) VALUES (?,?,?)");
-                $s->bind_param("sii", $curN, $did, $agId); $s->execute(); $curId = $conn->insert_id;
+                $s = $conn->prepare("INSERT INTO cursos (nombre) VALUES (?)");
+                $s->bind_param("s", $curN); $s->execute(); $curId = $conn->insert_id;
               }
 
               $s = $conn->prepare("SELECT COUNT(*) t FROM alumnos WHERE curso_id=?");
               $s->bind_param("i", $curId); $s->execute();
-              if ($s->get_result()->fetch_assoc()['t'] >= 50) throw new Exception("El curso '$curN' ($agN, $docU) ya tiene 50 alumnos.");
+              if ($s->get_result()->fetch_assoc()['t'] >= 50) throw new Exception("El curso '$curN' ya tiene 50 alumnos.");
 
               $qr = _nuevo_qr();
               $nfcVal = $nfc !== '' ? $nfc : null;
-              $s = $conn->prepare("INSERT INTO alumnos (curso_id,nombre,nfc_uid,qr_code) VALUES (?,?,?,?)");
-              $s->bind_param("isss", $curId, $alN, $nfcVal, $qr); $s->execute();
+              $qrApod = _nuevo_qr();
+              $s = $conn->prepare("INSERT INTO alumnos (curso_id,nombre,nfc_uid,qr_code,qr_apoderado) VALUES (?,?,?,?,?)");
+              $s->bind_param("issss", $curId, $alN, $nfcVal, $qr, $qrApod); $s->execute();
               $ok++;
             } catch (mysqli_sql_exception $e) {
               $errores[] = ['linea'=>$linea, 'motivo'=>'Tarjeta NFC duplicada u otro conflicto de datos.'];
@@ -102,9 +84,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="container mt-2">
   <div class="card p-4 shadow-sm mb-3">
     <h4 class="text-primary mb-3">Carga masiva de alumnos</h4>
-    <p class="text-muted">Sube un archivo <b>.csv</b> con las columnas <code>docente_usuario, asignatura, curso, alumno, nfc_uid</code>.
-      Si la asignatura o el curso no existen para ese docente, se crean automáticamente. La columna <code>nfc_uid</code> es opcional.
-      <?php if(!es_admin()): ?><br><strong>Como no eres administrador, la columna <code>docente_usuario</code> se ignora: todo se carga a tu propio nombre.</strong><?php endif; ?></p>
+    <p class="text-muted">Sube un archivo <b>.csv</b> con las columnas <code>curso, alumno, nfc_uid</code>.
+      Los alumnos se asocian solo al curso; si el curso no existe, se crea automáticamente. La columna <code>nfc_uid</code> es opcional.
+      (Las columnas antiguas <code>docente_usuario</code> y <code>asignatura</code> se ignoran si vienen en el archivo.)</p>
     <a href="plantilla_alumnos.php" class="btn btn-outline-primary mb-3">⬇️ Descargar plantilla CSV</a>
     <form method="POST" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap">
       <input type="file" name="archivo" accept=".csv" class="form-control" style="max-width:320px" required>

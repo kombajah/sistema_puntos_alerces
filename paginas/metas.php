@@ -2,10 +2,10 @@
 require_once 'conexion.php'; requiere_login();
 $mensaje=''; $error='';
 
-function es_mi_curso_meta($conn,$cid){
-  $s=$conn->prepare("SELECT docente_id FROM cursos WHERE id=?"); $s->bind_param("i",$cid); $s->execute();
-  $r=$s->get_result()->fetch_assoc();
-  return $r && (es_admin() || (int)$r['docente_id']===docente_id());
+// Las metas se asocian solo al curso; los cursos son compartidos, basta con que exista.
+function curso_existe_meta($conn,$cid){
+  $s=$conn->prepare("SELECT id FROM cursos WHERE id=?"); $s->bind_param("i",$cid); $s->execute();
+  return (bool)$s->get_result()->fetch_assoc();
 }
 function lunes_de_semana_iso($valorWeek){
   // $valorWeek viene de <input type="week"> con formato "YYYY-Www"
@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     $obj = (int)$_POST['puntos_objetivo'];
     $desc = mb_substr(trim($_POST['descripcion'] ?? ''), 0, 255);
     $lunes = lunes_de_semana_iso(trim($_POST['semana'] ?? ''));
-    if (!es_mi_curso_meta($conn,$cid)) $error = "Ese curso no te pertenece.";
+    if (!curso_existe_meta($conn,$cid)) $error = "Curso no válido.";
     elseif (!$lunes) $error = "Elige una semana válida.";
     elseif ($obj < 1) $error = "El puntaje objetivo debe ser mayor a 0.";
     else {
@@ -31,34 +31,26 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         $descVal = $desc !== '' ? $desc : null;
         $s->bind_param("isisi", $cid, $lunes, $obj, $descVal, $mid); $s->execute();
         $mensaje = "Meta creada.";
-      } catch (mysqli_sql_exception $e) { $error = "Ya existe una meta para ese curso en esa semana."; }
+      } catch (mysqli_sql_exception $e) { $error = "Ya tienes una meta para ese curso en esa semana."; }
     }
   } elseif (isset($_POST['borrar_meta'])) {
     $id = (int)$_POST['id'];
-    $s=$conn->prepare("SELECT curso_id FROM metas WHERE id=?"); $s->bind_param("i",$id); $s->execute();
+    $s=$conn->prepare("SELECT creado_por FROM metas WHERE id=?"); $s->bind_param("i",$id); $s->execute();
     $m=$s->get_result()->fetch_assoc();
-    if (!$m || !es_mi_curso_meta($conn,$m['curso_id'])) $error = "No tienes permiso sobre esa meta.";
+    // Solo el profesor que asignó la meta (o el administrador) puede eliminarla.
+    if (!$m || (!es_admin() && (int)$m['creado_por'] !== docente_id())) $error = "No tienes permiso sobre esa meta.";
     else { $s=$conn->prepare("DELETE FROM metas WHERE id=?"); $s->bind_param("i",$id); $s->execute(); $mensaje="Meta eliminada."; }
   }
 }
 
-$types=''; $vals=[];
-$sqlC = "SELECT c.id, c.nombre, ag.nombre asignatura, m.usuario docente FROM cursos c
-         JOIN asignaturas ag ON ag.id=c.asignatura_id JOIN maestros m ON m.id=c.docente_id WHERE 1=1";
-filtro_docente($sqlC,$types,$vals,'c');
-$s=$conn->prepare($sqlC." ORDER BY c.nombre"); if($vals) $s->bind_param($types,...$vals); $s->execute();
-$cursos = $s->get_result()->fetch_all(MYSQLI_ASSOC);
+$cursos = $conn->query("SELECT id, nombre FROM cursos ORDER BY nombre")->fetch_all(MYSQLI_ASSOC);
 
-$types=''; $vals=[];
-$sql = "SELECT mt.id, mt.semana_inicio, mt.puntos_objetivo, mt.descripcion, c.nombre curso, ag.nombre asignatura, m.usuario docente,
+$sql = "SELECT mt.id, mt.semana_inicio, mt.puntos_objetivo, mt.descripcion, mt.creado_por, c.nombre curso, ".sql_nombre_maestro('m')." profesor,
   COALESCE((SELECT SUM(r.puntos) FROM registro_puntos r JOIN alumnos al ON al.id=r.alumno_id
             WHERE al.curso_id=c.id AND r.fecha >= mt.semana_inicio AND r.fecha < DATE_ADD(mt.semana_inicio, INTERVAL 7 DAY)),0) avance
-  FROM metas mt JOIN cursos c ON c.id=mt.curso_id JOIN asignaturas ag ON ag.id=c.asignatura_id JOIN maestros m ON m.id=c.docente_id
-  WHERE 1=1";
-filtro_docente($sql,$types,$vals,'c');
-$sql .= " ORDER BY mt.semana_inicio DESC, c.nombre";
-$s=$conn->prepare($sql); if($vals) $s->bind_param($types,...$vals); $s->execute();
-$metas = $s->get_result()->fetch_all(MYSQLI_ASSOC);
+  FROM metas mt JOIN cursos c ON c.id=mt.curso_id LEFT JOIN maestros m ON m.id=mt.creado_por
+  ORDER BY mt.semana_inicio DESC, c.nombre";
+$metas = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
 
 $semanaActual = (new DateTime())->format('o-\WW');
 ?>
@@ -75,7 +67,7 @@ $semanaActual = (new DateTime())->format('o-\WW');
     <form method="POST" class="row g-2 align-items-end">
       <div class="col-md-5"><label class="form-label small">Curso</label>
         <select name="curso_id" class="form-select" required>
-          <?php foreach($cursos as $c): ?><option value="<?= (int)$c['id'] ?>"><?= h($c['nombre']) ?> · <?= h($c['asignatura']) ?><?= es_admin()?' — '.h($c['docente']):'' ?></option><?php endforeach; ?>
+          <?php foreach($cursos as $c): ?><option value="<?= (int)$c['id'] ?>"><?= h($c['nombre']) ?></option><?php endforeach; ?>
         </select></div>
       <div class="col-md-3"><label class="form-label small">Semana</label>
         <input type="week" name="semana" class="form-control" value="<?= $semanaActual ?>" required></div>
@@ -98,15 +90,20 @@ $semanaActual = (new DateTime())->format('o-\WW');
     ?>
     <div class="border-top py-3">
       <div class="d-flex justify-content-between flex-wrap gap-2 mb-1">
-        <div><strong><?= h($m['curso']) ?> · <?= h($m['asignatura']) ?></strong><?= es_admin()?' <span class="badge bg-secondary">'.h($m['docente']).'</span>':'' ?>
+        <div><strong><?= h($m['curso']) ?></strong>
           <div class="small text-muted"><?= $inicio->format('d/m') ?> — <?= $fin->format('d/m/Y') ?></div>
-          <?php if(!empty($m['descripcion'])): ?><div class="small fst-italic mt-1">📝 <?= h($m['descripcion']) ?></div><?php endif; ?></div>
+          <div class="small mt-1">
+            <span class="badge bg-secondary">👤 Profesor: <?= $m['profesor'] ? h($m['profesor']) : '—' ?></span>
+            <?php if(!empty($m['descripcion'])): ?><span class="fst-italic">📝 <?= h($m['descripcion']) ?></span><?php endif; ?>
+          </div></div>
         <div class="text-end">
           <span class="fw-bold"><?= (int)$m['avance'] ?> / <?= (int)$m['puntos_objetivo'] ?> pts</span>
+          <?php if(es_admin() || (int)$m['creado_por']===docente_id()): ?>
           <form method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar esta meta?')">
             <input type="hidden" name="id" value="<?= (int)$m['id'] ?>">
             <button name="borrar_meta" class="btn btn-sm btn-outline-danger ms-2">✕</button>
           </form>
+          <?php endif; ?>
         </div>
       </div>
       <div style="background:#e6efe0;border-radius:8px;overflow:hidden;height:16px">

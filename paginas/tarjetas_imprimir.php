@@ -4,18 +4,13 @@ require_once 'conexion.php'; requiere_login();
 $esApoderado = ($_GET['tipo'] ?? '') === 'apoderado';
 
 $fc  = (int)($_GET['curso'] ?? 0);
-$fa  = (int)($_GET['asignatura'] ?? 0);
-$fd  = es_admin() ? (int)($_GET['docente'] ?? 0) : 0;
 $fal = trim($_GET['alumno'] ?? '');
 
 $types=''; $vals=[];
-$sql = "SELECT al.nombre, al.qr_code, al.qr_apoderado, c.nombre curso, ag.nombre asignatura
-        FROM alumnos al JOIN cursos c ON c.id=al.curso_id JOIN asignaturas ag ON ag.id=c.asignatura_id
+$sql = "SELECT al.nombre, al.qr_code, al.qr_apoderado, c.nombre curso
+        FROM alumnos al JOIN cursos c ON c.id=al.curso_id
         WHERE 1=1";
-filtro_docente($sql,$types,$vals,'c');
 if ($fc)  { $sql.=" AND c.id=?";  $types.='i'; $vals[]=$fc; }
-if ($fa)  { $sql.=" AND ag.id=?"; $types.='i'; $vals[]=$fa; }
-if (es_admin() && $fd) { $sql.=" AND c.docente_id=?"; $types.='i'; $vals[]=$fd; }
 if ($fal !== '') { $sql.=" AND al.nombre LIKE ?"; $types.='s'; $vals[]='%'.$fal.'%'; }
 if ($esApoderado) { $sql.=" AND al.qr_apoderado IS NOT NULL"; }
 $sql.=" ORDER BY c.nombre, al.nombre";
@@ -51,7 +46,7 @@ body{font-family:'Quicksand',system-ui,sans-serif;background:#f3f7ef;color:#3845
     <img src="assets/logo_alerces.png" class="logo" alt="">
     <div class="q" id="q<?= $i ?>"></div>
     <b><?= h($a['nombre']) ?></b>
-    <small><?= h($a['curso']) ?> · <?= h($a['asignatura']) ?></small>
+    <small><?= h($a['curso']) ?></small>
   </div>
 <?php endforeach; if(!$alumnos) echo "<p>No hay alumnos para este filtro.</p>"; ?></div>
 <script>const D=<?= json_encode($codigos, JSON_HEX_TAG) ?>;

@@ -9,10 +9,9 @@ if (empty($token)) {
 
 // 1. Consultar información general del alumno
 $stmt = $conn->prepare("
-  SELECT a.id, a.nombre AS alumno_nombre, c.nombre AS curso_nombre, ag.nombre AS asignatura_nombre
+  SELECT a.id, a.nombre AS alumno_nombre, c.nombre AS curso_nombre
   FROM alumnos a
   JOIN cursos c ON c.id = a.curso_id
-  JOIN asignaturas ag ON ag.id = c.asignatura_id
   WHERE a.qr_apoderado = ?
 ");
 $stmt->bind_param("s", $token);
@@ -54,7 +53,7 @@ $totalGeneral = array_sum(array_column($reporteCategorias, 'total_puntos'));
   <div class="card shadow-sm border-0 mb-3">
     <div class="card-body text-center bg-primary text-white rounded-top">
       <h4 class="mb-1"><?= htmlspecialchars($alumno['alumno_nombre']) ?></h4>
-      <p class="mb-0 text-white-50"><?= htmlspecialchars($alumno['curso_nombre']) ?> · <?= htmlspecialchars($alumno['asignatura_nombre']) ?></p>
+      <p class="mb-0 text-white-50"><?= htmlspecialchars($alumno['curso_nombre']) ?></p>
     </div>
     <div class="card-body text-center border-bottom">
       <span class="text-muted d-block uppercase text-uppercase fw-bold small">Puntaje Total</span>

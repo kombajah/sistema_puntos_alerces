@@ -19,11 +19,22 @@ pudo verla.
 
 Ver `INSTRUCCIONES_AIVEN_VERCEL.md` para el detalle completo.
 
+## Cambios de la versión de modificaciones (los más recientes; prevalecen sobre lo descrito más abajo)
+- **Asignatura = atributo del maestro.** El mantenedor de asignaturas se movió de *Contenido* a *Maestros* (solo administrador). Al crear un maestro se guardan nombre, apellido, usuario, contraseña y asignatura (obligatoria para docentes, opcional para administradores). Un maestro tiene una asignatura.
+- **Cursos independientes de la asignatura y compartidos por todos los docentes.** *Contenido* ya no tiene asignaturas: se crea el curso solo con su nombre y el alumno se registra asociado solo al curso. Eliminar un curso queda reservado al administrador (borra alumnos y puntos de todos).
+- **Histórico:** nueva columna *Profesor* (nombre y apellido de quien asignó o canjeó los puntos), la columna *Asignatura* ahora es la del profesor que registró el movimiento, y hay un filtro por asignatura. Cada movimiento nuevo guarda `maestro_id` y `asignatura_id`.
+- **Metas:** asociadas solo al curso. Cada meta muestra un label «👤 Profesor: …» junto a la descripción; cada profesor puede tener su propia meta por curso y semana, y solo el autor (o el administrador) puede eliminarla.
+- **NFC:** en «Asignar puntaje a todo el curso» el combo muestra solo el curso, y al asignar se reproduce un sonido de monedas (`sonidos/monedas.mp3`; puedes reemplazar ese archivo por el audio que prefieras).
+- **Reporte:** metas, tablas y gráfico por curso sin asignatura; el gráfico «por asignatura» suma los puntos registrados por los profesores de cada asignatura.
+- **Carga masiva y tarjetas:** el CSV ahora es `curso, alumno, nfc_uid` (las columnas `docente_usuario` y `asignatura` se ignoran); los filtros de asignatura/profesor de *Tarjetas* se eliminaron.
+
+**Base de datos:** instalación nueva → `schema.sql`. Base existente → respaldar y ejecutar **una vez** `migracion_v2026_modificaciones.sql`; luego revisar cursos con el mismo nombre que antes estaban repetidos por asignatura (query al final de la migración).
+
 ## Novedades de esta versión
 - **Identidad Los Alerces**: logo de la escuela en el login (`assets/logo_alerces.png`) y paleta de colores en tonos pastel de bosque.
 - **Footer**: "© 2026 by KombaJah" con enlaces a Instagram y WhatsApp. Los enlaces en `footer.php` son un placeholder (`instagram.com/kombajah`, `wa.me/56900000000`): reemplázalos por tu usuario real de Instagram y tu número de WhatsApp.
-- **Carga masiva de alumnos** (`carga_masiva.php`, solo admin): sube un `.csv` con columnas `docente_usuario, asignatura, curso, alumno, nfc_uid`. Crea automáticamente la asignatura/curso si no existen para ese docente. Plantilla descargable en `plantilla_alumnos.php`. No procesa `.xlsx` directamente: hay que guardarlo como CSV desde Excel primero.
-- **Tarjetas de alumnos con QR** (`tarjetas.php` + `tarjetas_imprimir.php`): filtra por curso, asignatura y nombre de alumno (docente ve solo lo suyo); el admin además filtra por profesor. El botón "Imprimir / descargar" abre una hoja lista para Ctrl+P → Guardar como PDF.
+- **Carga masiva de alumnos** (`carga_masiva.php`): sube un `.csv` con columnas `curso, alumno, nfc_uid` (ver cambios de la versión de modificaciones). Crea automáticamente el curso si no existe. Plantilla descargable en `plantilla_alumnos.php`. No procesa `.xlsx` directamente: hay que guardarlo como CSV desde Excel primero.
+- **Tarjetas de alumnos con QR** (`tarjetas.php` + `tarjetas_imprimir.php`): filtra por curso y nombre de alumno. El botón "Imprimir / descargar" abre una hoja lista para Ctrl+P → Guardar como PDF.
 
 ## Estructura de despliegue en Vercel (plan Hobby)
 El plan Hobby permite máximo 12 Funciones Serverless por deployment. Como `vercel-php`

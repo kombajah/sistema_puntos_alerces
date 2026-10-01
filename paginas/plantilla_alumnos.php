@@ -9,10 +9,10 @@ header('Content-Disposition: attachment; filename="plantilla_alumnos.csv"');
 // 1. Definir el contenido del CSV con las instrucciones para Excel
 $lineas = [];
 $lineas[] = "sep=;";
-$lineas[] = "docente_usuario;asignatura;curso;alumno;nfc_uid";
-$lineas[] = 'jperez;Lenguaje;"1ro Básico A";"Cristofer Morales";';
-$lineas[] = 'jperez;Lenguaje;"1ro Básico A";"Ana Pérez";04:AA:BB:CC';
-$lineas[] = 'jperez;Matemática;"1ro Básico A";"Cristofer Morales";';
+$lineas[] = "curso;alumno;nfc_uid";
+$lineas[] = '"1ro Básico A";"Cristofer Morales";';
+$lineas[] = '"1ro Básico A";"Ana Pérez";04:AA:BB:CC';
+$lineas[] = '"1ro Básico B";"Luis Soto";';
 
 $contenido = implode("\n", $lineas);
 

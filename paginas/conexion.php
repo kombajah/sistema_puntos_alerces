@@ -82,9 +82,31 @@ if (!function_exists('es_admin')) {
 if (!function_exists('docente_id')) {
   function docente_id(){ return (int)($_SESSION['id'] ?? 0); }
 }
-// Firma con 4 parámetros: así la llaman canje.php, contenido.php e historico.php.
+// Ya no se usa para cursos/alumnos/metas (son compartidos por todos los docentes);
+// solo filtra las opciones de canje, que siguen siendo propias de cada docente.
 if (!function_exists('filtro_docente')) {
   function filtro_docente(&$sql, &$types, &$vals, $alias='c'){
     if (!es_admin()) { $sql .= " AND $alias.docente_id = ?"; $types .= 'i'; $vals[] = docente_id(); }
+  }
+}
+
+// Expresión SQL con "Nombre Apellido" del maestro (si no tiene nombre cargado, usa el usuario).
+if (!function_exists('sql_nombre_maestro')) {
+  function sql_nombre_maestro($alias='m'){
+    return "COALESCE(NULLIF(TRIM(CONCAT($alias.nombre,' ',$alias.apellido)),''), $alias.usuario)";
+  }
+}
+// Asignatura del maestro con sesión iniciada (null si no tiene). Se guarda en cada movimiento.
+if (!function_exists('asignatura_docente')) {
+  function asignatura_docente($conn){
+    static $cache = false;
+    if ($cache === false) {
+      $id = docente_id();
+      $s = $conn->prepare("SELECT asignatura_id FROM maestros WHERE id=?");
+      $s->bind_param("i", $id); $s->execute();
+      $r = $s->get_result()->fetch_assoc();
+      $cache = ($r && $r['asignatura_id'] !== null) ? (int)$r['asignatura_id'] : null;
+    }
+    return $cache;
   }
 }

@@ -4,9 +4,10 @@ requiere_login();
 $mensaje = ''; $error = ''; $canje_exitoso = false;
 
 function tasa($conn){ $r=$conn->query("SELECT valor FROM config WHERE clave='tasa_canje'")->fetch_assoc(); return max(1,(int)($r['valor']??10)); }
+// Los cursos/alumnos son compartidos por todos los docentes: basta con que el alumno exista.
 function alumno_permitido($conn,$id){
-  $s=$conn->prepare("SELECT c.docente_id FROM alumnos a JOIN cursos c ON c.id=a.curso_id WHERE a.id=?"); $s->bind_param("i",$id); $s->execute();
-  $r=$s->get_result()->fetch_assoc(); return $r && (es_admin() || (int)$r['docente_id']===docente_id());
+  $s=$conn->prepare("SELECT id FROM alumnos WHERE id=?"); $s->bind_param("i",$id); $s->execute();
+  return (bool)$s->get_result()->fetch_assoc();
 }
 function opcion_permitida($conn,$id){
   $s=$conn->prepare("SELECT docente_id, nombre, costo_puntos, activa FROM opciones_canje WHERE id=?"); $s->bind_param("i",$id); $s->execute();
@@ -29,11 +30,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     elseif ($base < 1 || $base > 100) $error = "Puntos base inválidos (1 a 100).";
     else {
       $tasa = tasa($conn); $costo = $base * $tasa;
-      $s = $conn->prepare("INSERT INTO canjes (alumno_id,puntos_virtuales,puntos_base,observacion)
-        SELECT a.id,?,?,? FROM alumnos a WHERE a.id=?
+      $mid = docente_id(); $asig = asignatura_docente($conn);
+      $s = $conn->prepare("INSERT INTO canjes (alumno_id,puntos_virtuales,puntos_base,observacion,maestro_id,asignatura_id)
+        SELECT a.id,?,?,?,?,? FROM alumnos a WHERE a.id=?
         AND (COALESCE((SELECT SUM(puntos) FROM registro_puntos WHERE alumno_id=a.id),0)
            - COALESCE((SELECT SUM(puntos_virtuales) FROM canjes WHERE alumno_id=a.id),0)) >= ?");
-      $s->bind_param("iisii", $costo, $base, $obs, $alumno, $costo); $s->execute();
+      $s->bind_param("iisiiii", $costo, $base, $obs, $mid, $asig, $alumno, $costo); $s->execute();
       if ($s->affected_rows > 0) { $mensaje = "Canje registrado: -$costo pts virtuales → +$base pt(s) base."; $canje_exitoso = true; }
       else $error = "Saldo insuficiente (se necesitan $costo pts virtuales).";
     }
@@ -46,11 +48,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     elseif (!$opcion) $error = "Esa opción de canje ya no está disponible.";
     else {
       $costo = (int)$opcion['costo_puntos'];
-      $s = $conn->prepare("INSERT INTO canjes (alumno_id,puntos_virtuales,puntos_base,observacion,opcion_id,nombre_opcion)
-        SELECT a.id,?,0,?,?,? FROM alumnos a WHERE a.id=?
+      $mid = docente_id(); $asig = asignatura_docente($conn);
+      $s = $conn->prepare("INSERT INTO canjes (alumno_id,puntos_virtuales,puntos_base,observacion,opcion_id,nombre_opcion,maestro_id,asignatura_id)
+        SELECT a.id,?,0,?,?,?,?,? FROM alumnos a WHERE a.id=?
         AND (COALESCE((SELECT SUM(puntos) FROM registro_puntos WHERE alumno_id=a.id),0)
            - COALESCE((SELECT SUM(puntos_virtuales) FROM canjes WHERE alumno_id=a.id),0)) >= ?");
-      $s->bind_param("isissi", $costo, $obs, $opcionId, $opcion['nombre'], $alumno, $costo); $s->execute();
+      $s->bind_param("isisiiii", $costo, $obs, $opcionId, $opcion['nombre'], $mid, $asig, $alumno, $costo); $s->execute();
       if ($s->affected_rows > 0) { $mensaje = "Canje registrado: -$costo pts virtuales → ".$opcion['nombre']."."; $canje_exitoso = true; }
       else $error = "Saldo insuficiente (se necesitan $costo pts virtuales).";
     }
@@ -88,18 +91,14 @@ $opcionesActivas = array_values(array_filter($opciones, fn($o)=>$o['activa']));
 
 $tasa = tasa($conn);
 $filtro = (int)($_GET['curso'] ?? 0);
-$types=''; $vals=[];
-$sqlC = "SELECT c.id, c.nombre FROM cursos c WHERE 1=1"; filtro_docente($sqlC,$types,$vals,'c');
-$s=$conn->prepare($sqlC." ORDER BY c.nombre"); if($vals) $s->bind_param($types,...$vals); $s->execute();
-$cursos = $s->get_result()->fetch_all(MYSQLI_ASSOC);
+$cursos = $conn->query("SELECT id, nombre FROM cursos ORDER BY nombre")->fetch_all(MYSQLI_ASSOC);
 
 $types=''; $vals=[];
-$sql = "SELECT a.id, a.nombre, c.nombre curso, ag.nombre asignatura,
+$sql = "SELECT a.id, a.nombre, c.nombre curso,
   COALESCE((SELECT SUM(puntos) FROM registro_puntos WHERE alumno_id=a.id),0) ganados,
   COALESCE((SELECT SUM(puntos_virtuales) FROM canjes WHERE alumno_id=a.id),0) canjeados,
   COALESCE((SELECT SUM(puntos_base) FROM canjes WHERE alumno_id=a.id),0) base
-  FROM alumnos a JOIN cursos c ON a.curso_id=c.id JOIN asignaturas ag ON ag.id=c.asignatura_id WHERE 1=1";
-filtro_docente($sql,$types,$vals,'c');
+  FROM alumnos a JOIN cursos c ON a.curso_id=c.id WHERE 1=1";
 if ($filtro) { $sql .= " AND c.id=?"; $types.='i'; $vals[]=$filtro; }
 $sql .= " ORDER BY c.nombre, a.nombre";
 $s = $conn->prepare($sql); if ($vals) $s->bind_param($types,...$vals); $s->execute();
@@ -118,7 +117,7 @@ $alumnos = $s->get_result()->fetch_all(MYSQLI_ASSOC);
         <select name="alumno_id" class="form-select mb-3" required>
           <option value="" disabled selected>Elige un alumno...</option>
           <?php foreach($alumnos as $a): $saldo=$a['ganados']-$a['canjeados']; ?>
-            <option value="<?= (int)$a['id'] ?>"><?= h($a['curso']) ?> · <?= h($a['asignatura']) ?> — <?= h($a['nombre']) ?> (saldo: <?= $saldo ?>)</option>
+            <option value="<?= (int)$a['id'] ?>"><?= h($a['curso']) ?> — <?= h($a['nombre']) ?> (saldo: <?= $saldo ?>)</option>
           <?php endforeach; ?>
         </select>
         <label class="form-label">Puntos base a otorgar (1 pt base = <?= $tasa ?> pts virtuales)</label>
@@ -147,7 +146,7 @@ $alumnos = $s->get_result()->fetch_all(MYSQLI_ASSOC);
         <select name="alumno_id_opcion" class="form-select mb-3" required>
           <option value="" disabled selected>Elige un alumno...</option>
           <?php foreach($alumnos as $a): $saldo=$a['ganados']-$a['canjeados']; ?>
-            <option value="<?= (int)$a['id'] ?>"><?= h($a['curso']) ?> · <?= h($a['asignatura']) ?> — <?= h($a['nombre']) ?> (saldo: <?= $saldo ?>)</option>
+            <option value="<?= (int)$a['id'] ?>"><?= h($a['curso']) ?> — <?= h($a['nombre']) ?> (saldo: <?= $saldo ?>)</option>
           <?php endforeach; ?>
         </select>
         <select name="opcion_id" class="form-select mb-3" required>
@@ -188,14 +187,14 @@ $alumnos = $s->get_result()->fetch_all(MYSQLI_ASSOC);
 
   <div class="card p-3 shadow-sm table-responsive">
     <form method="GET" class="mb-3"><select name="curso" class="form-select w-auto" onchange="this.form.submit()">
-      <option value="0">Todos mis cursos</option>
+      <option value="0">Todos los cursos</option>
       <?php foreach($cursos as $c): ?><option value="<?= (int)$c['id'] ?>" <?= $filtro==$c['id']?'selected':'' ?>><?= h($c['nombre']) ?></option><?php endforeach; ?>
     </select></form>
     <table class="table table-striped align-middle">
-      <thead><tr><th>Curso</th><th>Asignatura</th><th>Alumno</th><th class="text-center">Ganados</th><th class="text-center">Canjeados</th><th class="text-center">Saldo</th><th class="text-center">Pts base obtenidos</th></tr></thead>
+      <thead><tr><th>Curso</th><th>Alumno</th><th class="text-center">Ganados</th><th class="text-center">Canjeados</th><th class="text-center">Saldo</th><th class="text-center">Pts base obtenidos</th></tr></thead>
       <tbody>
       <?php foreach($alumnos as $a): ?>
-        <tr><td><?= h($a['curso']) ?></td><td><?= h($a['asignatura']) ?></td><td><?= h($a['nombre']) ?></td>
+        <tr><td><?= h($a['curso']) ?></td><td><?= h($a['nombre']) ?></td>
           <td class="text-center"><?= (int)$a['ganados'] ?></td><td class="text-center"><?= (int)$a['canjeados'] ?></td>
           <td class="text-center"><strong><?= $a['ganados']-$a['canjeados'] ?></strong></td><td class="text-center"><?= (int)$a['base'] ?></td></tr>
       <?php endforeach; ?>

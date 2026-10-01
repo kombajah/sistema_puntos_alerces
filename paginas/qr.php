@@ -1,9 +1,9 @@
 <?php
 require_once 'conexion.php'; requiere_login();
 $cid = (int)($_GET['curso'] ?? 0);
-$s = $conn->prepare("SELECT c.nombre curso, c.docente_id, ag.nombre asignatura FROM cursos c JOIN asignaturas ag ON ag.id=c.asignatura_id WHERE c.id=?");
+$s = $conn->prepare("SELECT c.nombre curso FROM cursos c WHERE c.id=?");
 $s->bind_param("i",$cid); $s->execute(); $curso = $s->get_result()->fetch_assoc();
-if (!$curso || (!es_admin() && (int)$curso['docente_id'] !== docente_id())) { http_response_code(403); die("No tienes permiso sobre este curso."); }
+if (!$curso) { http_response_code(404); die("Curso no encontrado."); }
 $s = $conn->prepare("SELECT nombre, qr_code FROM alumnos WHERE curso_id=? ORDER BY nombre");
 $s->bind_param("i",$cid); $s->execute(); $al = $s->get_result()->fetch_all(MYSQLI_ASSOC);
 ?>
@@ -12,7 +12,7 @@ $s->bind_param("i",$cid); $s->execute(); $al = $s->get_result()->fetch_all(MYSQL
 <style>body{font-family:sans-serif}.g{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 .t{border:1px dashed #999;padding:10px;text-align:center;break-inside:avoid}.t div.q{display:flex;justify-content:center}
 @media print{.np{display:none}}</style></head><body>
-<h3><?= h($curso['curso']) ?> · <?= h($curso['asignatura']) ?> <button class="np" onclick="print()">Imprimir</button></h3>
+<h3><?= h($curso['curso']) ?> <button class="np" onclick="print()">Imprimir</button></h3>
 <div class="g"><?php foreach($al as $i=>$a): ?>
   <div class="t"><div class="q" id="q<?= $i ?>"></div><b><?= h($a['nombre']) ?></b></div>
 <?php endforeach; if(!$al) echo "<p>Este curso aún no tiene alumnos.</p>"; ?></div>

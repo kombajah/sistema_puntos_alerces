@@ -11,20 +11,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['asignar_puntos'])) {
     $cat    = (int)($_POST['categoria_id'] ?? 0);
     $pts    = (int)($_POST['puntos'] ?? 0);
 
-    // Validar si el alumno pertenece a un curso del docente (salvo admin)
-    $s = $conn->prepare("SELECT c.docente_id FROM alumnos a JOIN cursos c ON c.id=a.curso_id WHERE a.id=?");
+    // Los cursos son compartidos: basta con que el alumno exista.
+    $s = $conn->prepare("SELECT id FROM alumnos WHERE id=?");
     $s->bind_param("i", $alumno); 
     $s->execute(); 
     $r = $s->get_result()->fetch_assoc();
 
-    if (!$r || (!es_admin() && (int)$r['docente_id'] !== docente_id())) {
+    if (!$r) {
         $error = "Alumno no válido.";
     } elseif (!in_array($pts, [1, 2, 3], true)) {
         $error = "Puntaje inválido.";
     } else {
-        // Registrar puntos en la base de datos
-        $s = $conn->prepare("INSERT INTO registro_puntos (alumno_id, categoria_id, puntos) SELECT a.id, c.id, ? FROM alumnos a, categorias c WHERE a.id=? AND c.id=?");
-        $s->bind_param("iii", $pts, $alumno, $cat); 
+        // Registrar puntos (guardando qué profesor y asignatura los asignó)
+        $mid = docente_id(); $asig = asignatura_docente($conn);
+        $s = $conn->prepare("INSERT INTO registro_puntos (alumno_id, categoria_id, puntos, maestro_id, asignatura_id) SELECT a.id, c.id, ?, ?, ? FROM alumnos a, categorias c WHERE a.id=? AND c.id=?");
+        $s->bind_param("iiiii", $pts, $mid, $asig, $alumno, $cat); 
         $s->execute();
 
         if ($s->affected_rows > 0) {
@@ -55,11 +56,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['asignar_masivo'])) {
     $cat   = (int)($_POST['categoria_id_masivo'] ?? 0);
     $pts   = (int)($_POST['puntos_masivo'] ?? 0);
 
-    $s = $conn->prepare("SELECT docente_id FROM cursos WHERE id=?");
+    $s = $conn->prepare("SELECT id FROM cursos WHERE id=?");
     $s->bind_param("i", $curso); $s->execute();
     $c = $s->get_result()->fetch_assoc();
 
-    if (!$c || (!es_admin() && (int)$c['docente_id'] !== docente_id())) {
+    if (!$c) {
         $error = "Curso no válido.";
     } elseif (!in_array($pts, [1, 2, 3], true)) {
         $error = "Puntaje inválido.";
@@ -69,11 +70,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['asignar_masivo'])) {
         if (!$s->get_result()->fetch_assoc()) {
             $error = "Motivo no válido.";
         } else {
+            $mid = docente_id(); $asig = asignatura_docente($conn);
             $s = $conn->prepare(
-                "INSERT INTO registro_puntos (alumno_id, categoria_id, puntos)
-                 SELECT a.id, ?, ? FROM alumnos a WHERE a.curso_id = ?"
+                "INSERT INTO registro_puntos (alumno_id, categoria_id, puntos, maestro_id, asignatura_id)
+                 SELECT a.id, ?, ?, ?, ? FROM alumnos a WHERE a.curso_id = ?"
             );
-            $s->bind_param("iii", $cat, $pts, $curso);
+            $s->bind_param("iiiii", $cat, $pts, $mid, $asig, $curso);
             $s->execute();
             $puntos_masivos_alumnos = $s->affected_rows;
             if ($puntos_masivos_alumnos > 0) {
@@ -85,14 +87,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['asignar_masivo'])) {
     }
 }
 
-// Cursos del docente (o todos, si es admin), para el formulario de asignación masiva
-$types=''; $vals=[];
-$sqlCursosMasivo = "SELECT c.id, c.nombre, ag.nombre asignatura, m.usuario docente,
-  (SELECT COUNT(*) FROM alumnos WHERE curso_id=c.id) total_alumnos
-  FROM cursos c JOIN asignaturas ag ON ag.id=c.asignatura_id JOIN maestros m ON m.id=c.docente_id WHERE 1=1";
-filtro_docente($sqlCursosMasivo,$types,$vals,'c');
-$s=$conn->prepare($sqlCursosMasivo." ORDER BY c.nombre"); if($vals) $s->bind_param($types,...$vals); $s->execute();
-$cursosMasivo = $s->get_result()->fetch_all(MYSQLI_ASSOC);
+// Cursos para el formulario de asignación masiva (solo el curso, sin asignatura)
+$cursosMasivo = $conn->query("SELECT c.id, c.nombre, (SELECT COUNT(*) FROM alumnos WHERE curso_id=c.id) total_alumnos FROM cursos c ORDER BY c.nombre")->fetch_all(MYSQLI_ASSOC);
 
 // Obtener categorías usando MySQLi
 $cats = $conn->query("SELECT * FROM categorias");
@@ -152,7 +148,7 @@ $catsMasivo = $conn->query("SELECT * FROM categorias");
             <select name="curso_id_masivo" class="form-select mb-3" required>
                 <option value="" disabled selected>Elige un curso...</option>
                 <?php foreach($cursosMasivo as $c): ?>
-                    <option value="<?= (int)$c['id'] ?>"><?= h($c['nombre']) ?> · <?= h($c['asignatura']) ?><?= es_admin()?' — '.h($c['docente']):'' ?> (<?= (int)$c['total_alumnos'] ?> alumnos)</option>
+                    <option value="<?= (int)$c['id'] ?>"><?= h($c['nombre']) ?> (<?= (int)$c['total_alumnos'] ?> alumnos)</option>
                 <?php endforeach; ?>
             </select>
             <select name="categoria_id_masivo" class="form-select mb-3" required>
@@ -214,6 +210,14 @@ function reproducirSonidoMoneda(repeticiones = 1) {
     }
 }
 
+// --- SONIDO DE MONEDAS (asignación a todo el curso) ---
+// Reproduce sonidos/monedas.mp3; si el navegador no puede, usa el sintetizador como respaldo.
+function reproducirSonidoMonedas() {
+    const audio = new Audio('sonidos/monedas.mp3');
+    audio.volume = 0.9;
+    audio.play().catch(() => reproducirSonidoMoneda(3));
+}
+
 <?php if ($puntos_asignados > 0): ?>
     document.addEventListener("DOMContentLoaded", () => {
         reproducirSonidoMoneda(<?= $puntos_asignados ?>);
@@ -221,7 +225,7 @@ function reproducirSonidoMoneda(repeticiones = 1) {
 <?php endif; ?>
 <?php if ($puntos_masivos_alumnos > 0): ?>
     document.addEventListener("DOMContentLoaded", () => {
-        reproducirSonidoMoneda(1);
+        reproducirSonidoMonedas();
     });
 <?php endif; ?>
 
@@ -269,7 +273,7 @@ async function cargar(codigo){
         document.getElementById('estadoNFC').style.display = "none";
         document.getElementById('formPuntos').style.display = "block";
         document.getElementById('nombreAlumnoDisplay').innerText = d.nombre;
-        document.getElementById('cursoDisplay').innerText = "Curso: " + d.curso + " · " + d.asignatura;
+        document.getElementById('cursoDisplay').innerText = "Curso: " + d.curso;
         document.getElementById('alumno_id_input').value = d.id;
         return true;
     } catch(e) {
