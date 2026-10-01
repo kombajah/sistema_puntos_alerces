@@ -154,6 +154,7 @@ $baseUrl = $protocol . $host . '/reporte_apoderado.php?token=';
         <div class="d-flex gap-1">
           <button class="btn btn-sm btn-outline-secondary" onclick="verQR('<?= h($a['qr_code']) ?>','Alumno: <?= h(addslashes($a['nombre'])) ?>')">QR Alumno</button>
           <button class="btn btn-sm btn-outline-warning text-dark" onclick="verQR('<?= $baseUrl . h($a['qr_apoderado']) ?>','Apoderado de: <?= h(addslashes($a['nombre'])) ?>')">QR Apoderado</button>
+          <button class="btn btn-sm btn-outline-success" onclick="verReporte('<?= h($a['qr_apoderado']) ?>','<?= h(addslashes($a['nombre'])) ?>')">📄 Reporte</button>
           <a href="?editar=<?= (int)$a['id'] ?>" class="btn btn-sm btn-outline-primary">Editar</a>
           <form method="POST" onsubmit="return confirm('¿Eliminar alumno?')"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><button name="borrar_alumno" class="btn btn-sm btn-outline-danger">✕</button></form>
         </div>
@@ -168,6 +169,15 @@ $baseUrl = $protocol . $host . '/reporte_apoderado.php?token=';
 <div class="modal fade" id="mqr" tabindex="-1"><div class="modal-dialog modal-sm modal-dialog-centered"><div class="modal-content text-center p-3">
   <h6 id="qrNombre"></h6><div id="qrBox" class="d-flex justify-content-center bg-white p-2"></div>
   <button class="btn btn-light mt-2" data-bs-dismiss="modal">Cerrar</button></div></div></div>
+
+<div class="modal fade" id="mrep" tabindex="-1"><div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
+  <div class="modal-header py-2">
+    <h6 class="modal-title" id="repNombre"></h6>
+    <a id="repLink" href="#" target="_blank" class="btn btn-sm btn-outline-secondary ms-auto me-2">Abrir en pestaña nueva</a>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+  </div>
+  <div class="modal-body p-0"><iframe id="repFrame" title="Reporte del apoderado" style="width:100%;height:75vh;border:0"></iframe></div>
+</div></div></div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 let ndef = null, destino = null;
@@ -205,6 +215,17 @@ async function leerNFC(idCampo){
     await ndef.scan(); mostrarStatus("🛜 Acerca la tarjeta...", "info");
   } catch(e){ mostrarStatus("⚠️ Error NFC: " + (e.message || e), "danger"); }
 }
+
+function verReporte(token, nombre){
+  const url = 'reporte_apoderado.php?token=' + encodeURIComponent(token);
+  document.getElementById('repNombre').innerText = 'Reporte de ' + nombre;
+  document.getElementById('repFrame').src = url;
+  document.getElementById('repLink').href = url;
+  new bootstrap.Modal(document.getElementById('mrep')).show();
+}
+document.getElementById('mrep').addEventListener('hidden.bs.modal', () => {
+  document.getElementById('repFrame').src = 'about:blank';
+});
 
 function verQR(textoQR, titulo){
   document.getElementById('qrNombre').innerText = titulo;

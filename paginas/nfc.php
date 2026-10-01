@@ -117,7 +117,12 @@ $catsMasivo = $conn->query("SELECT * FROM categorias");
 
     <div class="card p-4 mt-3 shadow-sm" id="formPuntos" style="display:none">
         <h5 id="nombreAlumnoDisplay" class="text-primary mb-0"></h5>
-        <p id="cursoDisplay" class="text-muted mb-3"></p>
+        <p id="cursoDisplay" class="text-muted mb-2"></p>
+        <div id="saldoBox" class="rounded-3 text-center py-2 mb-3" style="background:#e8f5e9;color:#2e7d32">
+            <div class="small fw-bold">Puntos disponibles</div>
+            <div id="saldoValor" class="fs-2 fw-bold lh-1">…</div>
+            <div id="saldoDetalle" class="small text-muted"></div>
+        </div>
         <form method="POST" onsubmit="return validar()">
             <input type="hidden" name="alumno_id" id="alumno_id_input">
             <label class="form-label">Motivo</label>
@@ -257,6 +262,22 @@ function validarMasivo(){
     return true;
 }
 
+async function cargarSaldo(id){
+    const valor = document.getElementById('saldoValor');
+    const detalle = document.getElementById('saldoDetalle');
+    valor.innerText = '…'; detalle.innerText = '';
+    try {
+        const r = await fetch("saldo_alumno.php?id=" + encodeURIComponent(id));
+        const d = await r.json();
+        if (d.error) { valor.innerText = '—'; detalle.innerText = d.error; return; }
+        valor.innerText = d.saldo;
+        detalle.innerText = "Ganados: " + d.ganados + " · Canjeados: " + d.canjeados;
+    } catch(e) {
+        valor.innerText = '—';
+        detalle.innerText = "No se pudo consultar el saldo";
+    }
+}
+
 async function cargar(codigo){
     if (ocupado || !codigo) return false; 
     ocupado = true;
@@ -275,6 +296,7 @@ async function cargar(codigo){
         document.getElementById('nombreAlumnoDisplay').innerText = d.nombre;
         document.getElementById('cursoDisplay').innerText = "Curso: " + d.curso;
         document.getElementById('alumno_id_input').value = d.id;
+        cargarSaldo(d.id);
         return true;
     } catch(e) {
         document.getElementById('estado').innerText = "⚠️ Error al consultar el alumno";
