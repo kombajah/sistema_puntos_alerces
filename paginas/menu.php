@@ -27,7 +27,7 @@ $enMas = isset($secundarios[$act]);
 </style>
 <div class="header-app d-flex justify-content-around align-items-center flex-wrap gap-2 pb-2">
   <?= lk('reporte.php','📊 Reporte',$act) ?>
-  <?= lk('nfc.php','🛜 NFC',$act) ?>
+  <?= lk('nfc.php','🛜 NFC/QR',$act) ?>
   <?= lk('contenido.php','⚙️ Contenido',$act) ?>
   <div class="menu-mas-wrap">
     <button type="button" id="btnMenuMas" class="menu-mas-btn" aria-label="Más opciones" aria-haspopup="true" aria-expanded="false" aria-controls="menuMas">
