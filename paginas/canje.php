@@ -103,6 +103,13 @@ if ($filtro) { $sql .= " AND c.id=?"; $types.='i'; $vals[]=$filtro; }
 $sql .= " ORDER BY c.nombre, a.nombre";
 $s = $conn->prepare($sql); if ($vals) $s->bind_param($types,...$vals); $s->execute();
 $alumnos = $s->get_result()->fetch_all(MYSQLI_ASSOC);
+
+// Premios canjeados por alumno (se usa nombre_opcion guardado en el canje, así se conserva aunque la opción se elimine)
+$premiosPorAlumno = [];
+$rp = $conn->query("SELECT alumno_id, nombre_opcion, COUNT(*) n FROM canjes
+  WHERE nombre_opcion IS NOT NULL AND nombre_opcion <> ''
+  GROUP BY alumno_id, nombre_opcion ORDER BY nombre_opcion");
+while ($p = $rp->fetch_assoc()) { $premiosPorAlumno[(int)$p['alumno_id']][] = $p; }
 ?>
 <!DOCTYPE html><html lang="es"><head><title>Canje de puntos</title><?php include 'head.php'; ?></head>
 <body class="bg-light">
@@ -191,12 +198,19 @@ $alumnos = $s->get_result()->fetch_all(MYSQLI_ASSOC);
       <?php foreach($cursos as $c): ?><option value="<?= (int)$c['id'] ?>" <?= $filtro==$c['id']?'selected':'' ?>><?= h($c['nombre']) ?></option><?php endforeach; ?>
     </select></form>
     <table class="table table-striped align-middle">
-      <thead><tr><th>Curso</th><th>Alumno</th><th class="text-center">Ganados</th><th class="text-center">Canjeados</th><th class="text-center">Saldo</th><th class="text-center">Pts base obtenidos</th></tr></thead>
+      <thead><tr><th>Curso</th><th>Alumno</th><th class="text-center">Ganados</th><th class="text-center">Canjeados</th><th class="text-center">Saldo</th><th class="text-center">Pts base obtenidos</th><th>Premios canjeados</th></tr></thead>
       <tbody>
       <?php foreach($alumnos as $a): ?>
         <tr><td><?= h($a['curso']) ?></td><td><?= h($a['nombre']) ?></td>
           <td class="text-center"><?= (int)$a['ganados'] ?></td><td class="text-center"><?= (int)$a['canjeados'] ?></td>
-          <td class="text-center"><strong><?= $a['ganados']-$a['canjeados'] ?></strong></td><td class="text-center"><?= (int)$a['base'] ?></td></tr>
+          <td class="text-center"><strong><?= $a['ganados']-$a['canjeados'] ?></strong></td><td class="text-center"><?= (int)$a['base'] ?></td>
+          <td>
+            <?php $prem = $premiosPorAlumno[(int)$a['id']] ?? []; ?>
+            <?php if (!$prem): ?><span class="text-muted">—</span>
+            <?php else: foreach ($prem as $p): ?>
+              <span class="badge bg-light text-dark border me-1"><?= h($p['nombre_opcion']) ?><?= $p['n'] > 1 ? ' ×' . (int)$p['n'] : '' ?></span>
+            <?php endforeach; endif; ?>
+          </td></tr>
       <?php endforeach; ?>
       </tbody></table>
   </div>
