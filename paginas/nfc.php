@@ -2,6 +2,25 @@
 require_once 'conexion.php'; 
 requiere_login();
 
+// Consulta de saldo (JSON) para el alumno escaneado. Vive en este mismo archivo
+// para no depender de que otro endpoint esté desplegado/ruteado en el servidor.
+if (isset($_GET['saldo'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    $sid = (int)$_GET['saldo'];
+    $q = $conn->prepare("
+        SELECT
+          COALESCE((SELECT SUM(puntos) FROM registro_puntos WHERE alumno_id = a.id), 0) AS ganados,
+          COALESCE((SELECT SUM(puntos_virtuales) FROM canjes WHERE alumno_id = a.id), 0) AS canjeados
+        FROM alumnos a WHERE a.id = ?");
+    $q->bind_param("i", $sid);
+    $q->execute();
+    $row = $q->get_result()->fetch_assoc();
+    if (!$row) { echo json_encode(['error' => 'Alumno no encontrado']); exit; }
+    $g = (int)$row['ganados']; $c = (int)$row['canjeados'];
+    echo json_encode(['ganados' => $g, 'canjeados' => $c, 'saldo' => $g - $c]);
+    exit;
+}
+
 $mensaje = ''; 
 $error = '';
 $puntos_asignados = 0; // Variable para controlar las repeticiones del sonido en JS
@@ -267,14 +286,15 @@ async function cargarSaldo(id){
     const detalle = document.getElementById('saldoDetalle');
     valor.innerText = '…'; detalle.innerText = '';
     try {
-        const r = await fetch("saldo_alumno.php?id=" + encodeURIComponent(id));
+        const r = await fetch("nfc.php?saldo=" + encodeURIComponent(id), { credentials: 'same-origin' });
+        if (!r.ok) throw new Error("HTTP " + r.status);
         const d = await r.json();
         if (d.error) { valor.innerText = '—'; detalle.innerText = d.error; return; }
         valor.innerText = d.saldo;
         detalle.innerText = "Ganados: " + d.ganados + " · Canjeados: " + d.canjeados;
     } catch(e) {
         valor.innerText = '—';
-        detalle.innerText = "No se pudo consultar el saldo";
+        detalle.innerText = "No se pudo consultar el saldo (" + (e.message || e) + ")";
     }
 }
 
