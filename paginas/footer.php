@@ -5,3 +5,4 @@
     <a href="https://wa.me/56912345678" target="_blank" rel="noopener">💬 WhatsApp</a>
   </div>
 </footer>
+<?php if (!empty($_SESSION['maestro'])) include __DIR__ . '/chat_widget.php'; // asistente Alercín (solo con sesión) ?>
