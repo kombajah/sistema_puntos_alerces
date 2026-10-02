@@ -28,7 +28,7 @@
 .al-form input:focus{outline:2px solid var(--forest-primary);border-color:transparent}
 .al-form button{background:var(--forest-primary);border:0;color:#fff;border-radius:50%;width:38px;height:38px;font-size:17px;cursor:pointer;flex:none}
 .al-nota{font-size:11px;color:#7c8b72;text-align:center;padding:0 10px 8px;background:#fff}
-@media (max-width:480px){#alercin-panel{right:8px;left:8px;width:auto;bottom:88px;height:calc(100vh - 110px)}#alercin-btn{right:12px;bottom:12px}#alercin-btn .al-tip{display:none}}
+@media (max-width:480px){#alercin-panel{right:8px;left:8px;width:auto;top:8px;bottom:88px;height:auto;max-height:none}#alercin-btn{right:12px;bottom:12px}#alercin-btn .al-tip{display:none}}
 @media print{#alercin-btn,#alercin-panel{display:none!important}}
 </style>
 
@@ -218,11 +218,23 @@ function buscar(q){
     else hist.forEach(function(m){ burbuja(m.rol==='yo'?'yo':'bot',m.texto); });
     menuTemas();
   }
+  function ajustar(){
+    var vv=window.visualViewport, abierto=panel.classList.contains('abierto');
+    if(!vv||window.innerWidth>480||!abierto){ panel.style.top=panel.style.height=panel.style.bottom=''; btn.style.display=''; return; }
+    var teclado=vv.height<window.innerHeight*0.75, inf=teclado?8:88;   // con teclado se oculta el botón y el chat usa todo el alto
+    panel.style.top=(vv.offsetTop+8)+'px'; panel.style.bottom='auto';
+    panel.style.height=Math.max(220,vv.height-8-inf)+'px';
+    btn.style.display=teclado?'none':'';
+    bajar();
+  }
   function abrir(v){
     var ab=(v===undefined)?!panel.classList.contains('abierto'):v;
     panel.classList.toggle('abierto',ab); btn.setAttribute('aria-expanded',ab);
+    ajustar();
     if(ab){ bajar(); setTimeout(function(){ input.focus(); },50); }
   }
+  if(window.visualViewport){ window.visualViewport.addEventListener('resize',ajustar); window.visualViewport.addEventListener('scroll',ajustar); }
+  window.addEventListener('resize',ajustar);
   btn.onclick=function(){ abrir(); };
   document.getElementById('al-cerrar').onclick=function(){ abrir(false); };
   document.getElementById('al-limpiar').onclick=function(){ hist=[]; guardar(); pintar(); };
