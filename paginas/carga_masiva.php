@@ -38,6 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           while (($fila = fgetcsv($fh, 0, $delimitador)) !== false) {
             $linea++;
             if (count(array_filter($fila, fn($v) => trim((string)$v) !== '')) === 0) continue; // fila vacía
+            $curN = $alN = $nfc = '';
             try {
               $curN = trim($fila[$idx['curso']] ?? '');
               $alN  = trim($fila[$idx['alumno']] ?? '');
@@ -65,9 +66,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               $s->bind_param("issss", $curId, $alN, $nfcVal, $qr, $qrApod); $s->execute();
               $ok++;
             } catch (mysqli_sql_exception $e) {
-              $errores[] = ['linea'=>$linea, 'motivo'=>'Tarjeta NFC duplicada u otro conflicto de datos.'];
+              $motivo = 'No se pudo guardar el alumno (error de datos).';
+              if ((int)$e->getCode() === 1062 && stripos($e->getMessage(), 'nfc_uid') !== false) {
+                $motivo = "La tarjeta NFC «$nfc» ya está asignada a otro alumno";
+                try {
+                  $q = $conn->prepare("SELECT a.nombre AS alumno, c.nombre AS curso FROM alumnos a JOIN cursos c ON c.id=a.curso_id WHERE a.nfc_uid=? LIMIT 1");
+                  $q->bind_param("s", $nfc); $q->execute();
+                  if ($dup = $q->get_result()->fetch_assoc()) $motivo .= ": {$dup['alumno']} ({$dup['curso']}). Si es el mismo código repetido en tu archivo, deja solo una fila o borra el nfc_uid de la repetida.";
+                  else $motivo .= '.';
+                } catch (mysqli_sql_exception $e2) { $motivo .= '.'; }
+              } else {
+                error_log('carga_masiva línea '.$linea.': '.$e->getMessage());
+              }
+              $errores[] = ['linea'=>$linea, 'curso'=>$curN, 'alumno'=>$alN, 'nfc'=>$nfc, 'motivo'=>$motivo];
             } catch (Exception $e) {
-              $errores[] = ['linea'=>$linea, 'motivo'=>$e->getMessage()];
+              $errores[] = ['linea'=>$linea, 'curso'=>$curN, 'alumno'=>$alN, 'nfc'=>$nfc, 'motivo'=>$e->getMessage()];
             }
           }
           $resultado = ['ok'=>$ok, 'errores'=>$errores];
@@ -97,17 +110,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
   <?php if ($resultado): ?>
   <div class="card p-4 shadow-sm">
-    <div class="alert <?= $resultado['ok']>0 ? 'alert-success' : 'alert-warning' ?>">
+    <div class="alert <?= ($resultado['ok']>0 && !$resultado['errores']) ? 'alert-success' : 'alert-warning' ?>">
       <?= (int)$resultado['ok'] ?> alumno(s) registrados correctamente.
       <?php if($resultado['errores']): ?> <?= count($resultado['errores']) ?> fila(s) con error.<?php endif; ?>
     </div>
     <?php if($resultado['errores']): ?>
-    <table class="table table-sm">
-      <thead><tr><th>Línea</th><th>Motivo</th></tr></thead>
+    <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead><tr><th>Línea</th><th>Curso</th><th>Alumno</th><th>NFC</th><th>Motivo</th></tr></thead>
       <tbody><?php foreach($resultado['errores'] as $e): ?>
-        <tr><td><?= (int)$e['linea'] ?></td><td><?= h($e['motivo']) ?></td></tr>
+        <tr><td><?= (int)$e['linea'] ?></td><td><?= h($e['curso'] ?? '') ?></td><td><?= h($e['alumno'] ?? '') ?></td><td><code><?= h($e['nfc'] ?? '') ?></code></td><td><?= h($e['motivo']) ?></td></tr>
       <?php endforeach; ?></tbody>
     </table>
+    </div>
+    <?php
+      // CSV con solo las filas fallidas, para corregirlas y volver a subirlas (separador ; y BOM para que Excel lea las tildes)
+      $csvErr = "\xEF\xBB\xBFcurso;alumno;nfc_uid\r\n"; $hayFilas = false;
+      foreach ($resultado['errores'] as $e) {
+        if (empty($e['alumno'])) continue;
+        $hayFilas = true;
+        $csvErr .= implode(';', array_map(fn($v) => '"'.str_replace('"','""',(string)$v).'"', [$e['curso'] ?? '', $e['alumno'], $e['nfc'] ?? ''])) . "\r\n";
+      }
+    ?>
+    <?php if ($hayFilas): ?>
+    <a download="filas_con_error.csv" class="btn btn-outline-primary btn-sm" href="data:text/csv;base64,<?= base64_encode($csvErr) ?>">⬇️ Descargar solo las filas con error</a>
+    <?php endif; ?>
+    <small class="text-muted d-block mt-2">«Línea» es el número de fila de tu archivo (la 1 es el encabezado). Los alumnos sin error <b>ya quedaron registrados</b>: corrige y sube solo las filas con error para no duplicarlos.</small>
     <?php endif; ?>
   </div>
   <?php endif; ?>
