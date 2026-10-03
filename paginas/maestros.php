@@ -98,7 +98,12 @@ $m = $conn->query("SELECT m.id, m.nombre, m.apellido, m.usuario, m.rol, m.asigna
                    FROM maestros m LEFT JOIN asignaturas ag ON ag.id=m.asignatura_id
                    ORDER BY m.rol DESC, m.apellido, m.nombre, m.usuario")->fetch_all(MYSQLI_ASSOC);
 ?>
-<!DOCTYPE html><html lang="es"><head><title>Maestros</title><?php include 'head.php'; ?></head>
+<!DOCTYPE html><html lang="es"><head><title>Maestros</title><?php include 'head.php'; ?>
+<style>
+  .tabla-maestros thead th{background:#e8f2e4;color:#38452f;font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #cfe0c8;white-space:nowrap;padding:.65rem .75rem}
+  .tabla-maestros td{padding:.55rem .75rem}
+  .tabla-maestros .fila-edicion td{background:#fff8e6}
+</style></head>
 <body class="bg-light"><?php include 'menu.php'; ?>
 <div class="container mt-2">
   <?php if($mensaje) echo "<div class='alert alert-success'>".h($mensaje)."</div>"; ?>
@@ -106,11 +111,11 @@ $m = $conn->query("SELECT m.id, m.nombre, m.apellido, m.usuario, m.rol, m.asigna
 
   <div class="row">
     <div class="col-lg-7 mb-3"><div class="card p-4 shadow-sm h-100"><h4 class="text-primary mb-3">Nuevo maestro</h4>
-      <form method="POST" class="row g-2">
+      <form method="POST" class="row g-2" autocomplete="off">
         <div class="col-md-6"><input name="nombre" class="form-control" placeholder="Nombre" maxlength="100" required></div>
         <div class="col-md-6"><input name="apellido" class="form-control" placeholder="Apellido" maxlength="100" required></div>
-        <div class="col-md-6"><input name="usuario" class="form-control" placeholder="Usuario" maxlength="50" required></div>
-        <div class="col-md-6"><input type="password" name="password" class="form-control" placeholder="Contraseña (mín. 6)" required></div>
+        <div class="col-md-6"><input name="usuario" class="form-control" placeholder="Usuario" maxlength="50" autocomplete="off" required></div>
+        <div class="col-md-6"><input type="password" name="password" class="form-control" placeholder="Contraseña (mín. 6)" autocomplete="new-password" required></div>
         <div class="col-md-6"><select name="asignatura_id" class="form-select">
           <option value="">Elige una asignatura...</option>
           <?php foreach($asignaturas as $a): ?><option value="<?= (int)$a['id'] ?>"><?= h($a['nombre']) ?></option><?php endforeach; ?>
@@ -148,33 +153,74 @@ $m = $conn->query("SELECT m.id, m.nombre, m.apellido, m.usuario, m.rol, m.asigna
     </div></div>
   </div>
 
-  <div class="card p-3 shadow-sm"><?php foreach($m as $x): ?>
-    <?php if($ed==$x['id']): ?>
-    <form method="POST" class="border-bottom py-2 row g-2">
-      <input type="hidden" name="id" value="<?= (int)$x['id'] ?>">
-      <div class="col-md-3"><input name="nombre" class="form-control form-control-sm" value="<?= h($x['nombre']) ?>" placeholder="Nombre" required></div>
-      <div class="col-md-3"><input name="apellido" class="form-control form-control-sm" value="<?= h($x['apellido']) ?>" placeholder="Apellido" required></div>
-      <div class="col-md-3"><select name="asignatura_id" class="form-select form-select-sm">
-        <option value="">Sin asignatura</option>
-        <?php foreach($asignaturas as $a): ?><option value="<?= (int)$a['id'] ?>" <?= $a['id']==$x['asignatura_id']?'selected':'' ?>><?= h($a['nombre']) ?></option><?php endforeach; ?>
-      </select></div>
-      <div class="col-md-3 d-flex gap-1"><button name="editar_maestro" class="btn btn-sm btn-primary">Guardar</button><a href="maestros.php" class="btn btn-sm btn-light">Cancelar</a></div>
-    </form>
-    <?php else: ?>
-    <div class="d-flex justify-content-between align-items-center border-bottom py-2 flex-wrap gap-2">
-      <div>
-        <b><?= h(trim($x['nombre'].' '.$x['apellido']) ?: $x['usuario']) ?></b>
-        <small class="text-muted">@<?= h($x['usuario']) ?></small>
-        <span class="badge <?= $x['rol']=='admin'?'bg-dark':'bg-primary' ?>"><?= $x['rol']=='admin'?'Administrador':'Docente' ?></span>
-        <span class="badge bg-primary-subtle text-primary"><?= $x['asignatura'] ? h($x['asignatura']) : 'Sin asignatura' ?></span>
-      </div>
-      <div class="d-flex gap-2 flex-wrap">
-        <a href="?editar=<?= (int)$x['id'] ?>" class="btn btn-sm btn-outline-primary">Editar</a>
-        <form method="POST" class="d-flex gap-1"><input type="hidden" name="id" value="<?= (int)$x['id'] ?>"><input type="password" name="password" class="form-control form-control-sm" placeholder="Nueva clave" required><button name="clave" class="btn btn-sm btn-outline-primary">Cambiar</button></form>
-        <form method="POST" onsubmit="return confirm('¿Eliminar este maestro? Sus opciones de canje se borran; el histórico y las metas se conservan.')"><input type="hidden" name="id" value="<?= (int)$x['id'] ?>"><button name="borrar" class="btn btn-sm btn-outline-danger">✕</button></form>
-      </div>
+  <div class="card shadow-sm">
+    <div class="d-flex align-items-center gap-2 px-3 pt-3 pb-2">
+      <h5 class="mb-0 text-primary">Maestros registrados</h5>
+      <span class="badge bg-light text-dark border"><?= count($m) ?></span>
     </div>
-    <?php endif; ?>
-  <?php endforeach; ?></div>
+    <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0 tabla-maestros">
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>Usuario</th>
+          <th>Rol</th>
+          <th>Asignatura</th>
+          <th>Nueva contraseña</th>
+          <th class="text-end">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+      <?php foreach($m as $x): $mid = (int)$x['id']; ?>
+        <?php if($ed==$mid): ?>
+        <tr class="fila-edicion">
+          <td>
+            <form id="fe-<?= $mid ?>" method="POST"><input type="hidden" name="id" value="<?= $mid ?>"></form>
+            <div class="d-flex gap-1">
+              <input form="fe-<?= $mid ?>" name="nombre" class="form-control form-control-sm" style="min-width:110px" value="<?= h($x['nombre']) ?>" placeholder="Nombre" maxlength="100" required>
+              <input form="fe-<?= $mid ?>" name="apellido" class="form-control form-control-sm" style="min-width:110px" value="<?= h($x['apellido']) ?>" placeholder="Apellido" maxlength="100" required>
+            </div>
+          </td>
+          <td class="text-muted">@<?= h($x['usuario']) ?></td>
+          <td><span class="badge <?= $x['rol']=='admin'?'bg-dark':'bg-primary' ?>"><?= $x['rol']=='admin'?'Administrador':'Docente' ?></span></td>
+          <td>
+            <select form="fe-<?= $mid ?>" name="asignatura_id" class="form-select form-select-sm" style="min-width:150px">
+              <option value="">Sin asignatura</option>
+              <?php foreach($asignaturas as $a): ?><option value="<?= (int)$a['id'] ?>" <?= $a['id']==$x['asignatura_id']?'selected':'' ?>><?= h($a['nombre']) ?></option><?php endforeach; ?>
+            </select>
+          </td>
+          <td class="text-muted small">—</td>
+          <td class="text-end text-nowrap">
+            <button form="fe-<?= $mid ?>" name="editar_maestro" class="btn btn-sm btn-primary">Guardar</button>
+            <a href="maestros.php" class="btn btn-sm btn-light">Cancelar</a>
+          </td>
+        </tr>
+        <?php else: ?>
+        <tr>
+          <td class="fw-semibold"><?= h(trim($x['nombre'].' '.$x['apellido']) ?: $x['usuario']) ?></td>
+          <td class="text-muted">@<?= h($x['usuario']) ?></td>
+          <td><span class="badge <?= $x['rol']=='admin'?'bg-dark':'bg-primary' ?>"><?= $x['rol']=='admin'?'Administrador':'Docente' ?></span></td>
+          <td>
+            <?php if($x['asignatura']): ?><span class="badge bg-primary-subtle text-primary"><?= h($x['asignatura']) ?></span>
+            <?php else: ?><span class="badge bg-warning-subtle text-warning-emphasis">Sin asignatura</span><?php endif; ?>
+          </td>
+          <td>
+            <form method="POST" class="d-flex gap-1" style="min-width:240px">
+              <input type="hidden" name="id" value="<?= $mid ?>">
+              <input type="password" name="password" class="form-control form-control-sm" placeholder="Nueva clave (mín. 6)" autocomplete="new-password" minlength="6" required>
+              <button name="clave" class="btn btn-sm btn-outline-primary">Cambiar</button>
+            </form>
+          </td>
+          <td class="text-end text-nowrap">
+            <a href="?editar=<?= $mid ?>" class="btn btn-sm btn-outline-primary">Editar</a>
+            <form method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar este maestro? Sus opciones de canje se borran; el histórico y las metas se conservan.')"><input type="hidden" name="id" value="<?= $mid ?>"><button name="borrar" class="btn btn-sm btn-outline-danger">✕</button></form>
+          </td>
+        </tr>
+        <?php endif; ?>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+    </div>
+  </div>
 </div><?php include 'footer.php'; ?>
 </body></html>
