@@ -32,7 +32,7 @@ $lnk = fn($c) => '?' . http_build_query($base + ['caras'=>$c]);
 
 // Imagen de la mascota (opcional): coloca el archivo en assets/alercin_mascota.png
 $mascota = 'assets/alercin_mascota.png';
-$tieneMascota = is_file(__DIR__ . '/' . $mascota);
+$tieneMascota = is_file(__DIR__ . '/../' . $mascota) || is_file(__DIR__ . '/' . $mascota);
 ?>
 <!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Tarjetas de alumnos</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -115,8 +115,8 @@ function cara_frente($a, $esApoderado, $mascota, $tieneMascota){ ?>
     <div class="chip"></div><div class="nfc">)))</div>
     <div class="campo c1"><small>NOMBRE DEL ALUMNO:</small><div class="v"><?= h($a['nombre']) ?></div></div>
     <div class="campo c2"><small>CURSO:</small><div class="v"><?= h($a['curso']) ?></div></div>
-    <?php if($tieneMascota): ?><img class="mascota" src="<?= h($mascota) ?>" alt="">
-    <?php else: ?><div class="mascota-emoji">🌳</div><?php endif; ?>
+    <img class="mascota" src="<?= h($mascota) ?>" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+    <div class="mascota-emoji" style="display:none">🌳</div>
     <div class="lema">¡Ven al colegio, cumple desafíos<br>y canjea tus puntos!</div>
     <div class="puntos">PUNTOS ALERCIN JUNTADOS:<br>RE-FILLABLE: <i></i><i></i><i></i><i></i><i class="p"></i></div>
     <div class="pie"><span>ASISTENCIA</span><span>MATERIALES</span><span>BUEN COMPORTAMIENTO</span></div>
