@@ -132,7 +132,7 @@ function cara_dorso($a, $esApoderado, $idx){ ?>
         <?php if($esApoderado): ?><br><span class="tag">APODERADO</span><?php endif; ?>
         <b><?= h($a['nombre']) ?></b>
         <span class="cur"><?= h($a['curso']) ?></span>
-        <div class="ayuda"><?= $esApoderado ? 'Escanea para ver el reporte de tu pupilo/a.' : 'Escanea este código en el lector del colegio para sumar puntos.' ?></div>
+        <div class="ayuda"><?= $esApoderado ? 'Escanea para ver el reporte de tu pupilo/a.' : 'Tu profesor/a te debe escanear esta tarjeta para sumar puntos.' ?></div>
       </div>
     </div>
     <div class="franja"></div>
