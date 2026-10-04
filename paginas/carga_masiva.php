@@ -4,6 +4,15 @@ require_once 'conexion.php'; requiere_login();
 
 function _nuevo_qr(){ return bin2hex(random_bytes(6)); }
 
+// Deja un texto del archivo en UTF-8 limpio. Excel en Windows suele guardar el CSV en Windows-1252
+// (tildes y ñ se rompen) y deja espacios "duros" invisibles al inicio; aquí se corrige todo.
+function _limpiar($v){
+  $v = (string)$v;
+  if (!mb_check_encoding($v, 'UTF-8')) $v = mb_convert_encoding($v, 'UTF-8', 'Windows-1252');
+  $v = preg_replace('/[\x{00A0}\x{1680}\x{2000}-\x{200B}\x{202F}\x{205F}\x{3000}\x{FEFF}\s]+/u', ' ', $v);
+  return trim((string)$v);
+}
+
 $resultado = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -27,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       if (!$header) {
         $resultado = ['ok'=>0, 'errores'=>[['linea'=>1,'motivo'=>'Archivo vacío o con formato inválido.']]];
       } else {
-        $header = array_map(fn($c) => strtolower(trim((string)$c)), $header);
+        $header = array_map(fn($c) => strtolower(_limpiar($c)), $header);
         $idx = array_flip($header);
         // Las columnas antiguas docente_usuario y asignatura (si vienen en el archivo) se ignoran.
         $faltan = array_diff(['curso','alumno'], array_keys($idx));
@@ -37,12 +46,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           $ok = 0; $errores = []; $linea = 1;
           while (($fila = fgetcsv($fh, 0, $delimitador)) !== false) {
             $linea++;
-            if (count(array_filter($fila, fn($v) => trim((string)$v) !== '')) === 0) continue; // fila vacía
+            if (count(array_filter($fila, fn($v) => _limpiar($v) !== '')) === 0) continue; // fila vacía
             $curN = $alN = $nfc = '';
             try {
-              $curN = trim($fila[$idx['curso']] ?? '');
-              $alN  = trim($fila[$idx['alumno']] ?? '');
-              $nfc  = isset($idx['nfc_uid']) ? trim($fila[$idx['nfc_uid']] ?? '') : '';
+              $curN = mb_substr(_limpiar($fila[$idx['curso']] ?? ''), 0, 100);
+              $alN  = mb_substr(_limpiar($fila[$idx['alumno']] ?? ''), 0, 100);
+              $nfc  = isset($idx['nfc_uid']) ? mb_substr(_limpiar($fila[$idx['nfc_uid']] ?? ''), 0, 100) : '';
               if ($curN === '' || $alN === '') throw new Exception('Faltan datos obligatorios en la fila (curso y alumno).');
 
               // El alumno se asocia solo al curso; si el curso no existe, se crea.
@@ -66,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               $s->bind_param("issss", $curId, $alN, $nfcVal, $qr, $qrApod); $s->execute();
               $ok++;
             } catch (mysqli_sql_exception $e) {
-              $motivo = 'No se pudo guardar el alumno (error de datos).';
+              $motivo = 'No se pudo guardar el alumno (error '.(int)$e->getCode().': '.mb_substr(_limpiar($e->getMessage()), 0, 140).').';
               if ((int)$e->getCode() === 1062 && stripos($e->getMessage(), 'nfc_uid') !== false) {
                 $motivo = "La tarjeta NFC «$nfc» ya está asignada a otro alumno";
                 try {
