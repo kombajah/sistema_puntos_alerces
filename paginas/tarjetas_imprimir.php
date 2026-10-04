@@ -109,17 +109,17 @@ body{font-family:'Quicksand',system-ui,sans-serif;background:#eef3ea;color:#3845
 function cara_frente($a, $esApoderado, $mascota, $tieneMascota){ ?>
   <div class="card front">
     <div class="franja"></div>
-    <div class="titulo">ALERCIN POINTS CARD</div>
+    <div class="titulo">TARJETA DE PUNTOS</div>
     <?php if($esApoderado): ?><span class="etiqueta-ap">APODERADO</span><?php endif; ?>
-    <div class="pay">CONTACTLESS PAY</div>
+    <div class="pay">SIN CONTACTO</div>
     <div class="chip"></div><div class="nfc">)))</div>
     <div class="campo c1"><small>NOMBRE DEL ALUMNO:</small><div class="v"><?= h($a['nombre']) ?></div></div>
     <div class="campo c2"><small>CURSO:</small><div class="v"><?= h($a['curso']) ?></div></div>
     <img class="mascota" src="<?= h($mascota) ?>" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
     <div class="mascota-emoji" style="display:none">🌳</div>
     <div class="lema">¡Ven al colegio, cumple desafíos<br>y canjea tus puntos!</div>
-    <div class="puntos">PUNTOS ALERCIN JUNTADOS:<br>RE-FILLABLE: <i></i><i></i><i></i><i></i><i class="p"></i></div>
-    <div class="pie"><span>ASISTENCIA</span><span>MATERIALES</span><span>BUEN COMPORTAMIENTO</span></div>
+    <!--div class="puntos">PUNTOS ALERCIN JUNTADOS:<br>RE-FILLABLE: <i></i><i></i><i></i><i></i><i class="p"></i></div-->
+    <div class="pie"><span>ASISTENCIA</span><span>PARTICIPACION</span><span>BUEN COMPORTAMIENTO</span></div>
   </div>
 <?php }
 function cara_dorso($a, $esApoderado, $idx){ ?>
