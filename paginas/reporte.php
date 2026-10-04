@@ -1,6 +1,7 @@
 <?php
 require_once 'conexion.php'; requiere_login();
 $cursos = $conn->query("SELECT id, nombre FROM cursos ORDER BY nombre")->fetch_all(MYSQLI_ASSOC);
+usort($cursos, fn($x,$y) => strnatcasecmp($x['nombre'], $y['nombre'])); // orden natural: 2° antes que 10°
 $cats = $conn->query("SELECT * FROM categorias ORDER BY id")->fetch_all(MYSQLI_ASSOC);
 $filtro = (int)($_GET['curso'] ?? 0);
 
@@ -8,6 +9,7 @@ $filtro = (int)($_GET['curso'] ?? 0);
 $totalesCurso = $conn->query("SELECT c.id, c.nombre curso,
   COALESCE((SELECT SUM(r.puntos) FROM registro_puntos r JOIN alumnos al ON al.id=r.alumno_id WHERE al.curso_id=c.id),0) total
   FROM cursos c ORDER BY total DESC")->fetch_all(MYSQLI_ASSOC);
+usort($totalesCurso, fn($a,$b) => ((int)$b['total'] <=> (int)$a['total']) ?: strnatcasecmp($a['curso'], $b['curso']));
 
 // --- Totales por asignatura: puntos registrados por los profesores de cada asignatura ---
 $totalesAsignatura = [];
@@ -26,6 +28,7 @@ $sqlM = "SELECT mt.puntos_objetivo, mt.descripcion, c.nombre curso, ".sql_nombre
   WHERE mt.semana_inicio = ? ORDER BY c.nombre";
 $s=$conn->prepare($sqlM); $s->bind_param("s",$lunesHoy); $s->execute();
 $metasSemana = $s->get_result()->fetch_all(MYSQLI_ASSOC);
+usort($metasSemana, fn($a,$b) => strnatcasecmp($a['curso'], $b['curso']));
 
 $types=''; $vals=[];
 $sql = "SELECT a.id, a.nombre alumno, c.nombre curso, r.categoria_id, SUM(r.puntos) pts
@@ -43,7 +46,7 @@ foreach ($s->get_result() as $r) {
 }
 $can=[]; foreach($conn->query('SELECT alumno_id, SUM(puntos_virtuales) t FROM canjes GROUP BY alumno_id') as $q) $can[$q['alumno_id']]=(int)$q['t'];
 foreach($filas as $id=>&$f) $f['canje']=$can[$id]??0; unset($f);
-uasort($filas, fn($x,$y)=>[$x['curso'],-$x['total']]<=>[$y['curso'],-$y['total']]);
+uasort($filas, fn($x,$y) => strnatcasecmp($x['curso'], $y['curso']) ?: ($y['total'] <=> $x['total']));
 ?>
 <!DOCTYPE html><html lang="es"><head><title>Reportería</title><?php include 'head.php'; ?></head>
 <body class="bg-light">
@@ -101,12 +104,12 @@ uasort($filas, fn($x,$y)=>[$x['curso'],-$x['total']]<=>[$y['curso'],-$y['total']
   </div>
   <div class="card p-3 shadow-sm table-responsive">
     <table class="table table-striped align-middle">
-      <thead><tr><th>Curso</th><th>Alumno</th>
+      <thead><tr><th class="text-nowrap">Curso</th><th style="min-width:220px">Alumno</th>
         <?php foreach($cats as $k): ?><th class="text-center"><?= h($k['nombre']) ?></th><?php endforeach; ?>
         <th class="text-center">Total</th><th class="text-center">Canjeado</th><th class="text-center">Saldo</th></tr></thead>
       <tbody>
       <?php foreach($filas as $f): ?>
-        <tr><td><?= h($f['curso']) ?></td><td><?= h($f['alumno']) ?></td>
+        <tr><td class="text-nowrap"><?= h($f['curso']) ?></td><td><?= h($f['alumno']) ?></td>
           <?php foreach($cats as $k): ?><td class="text-center"><?= $f['cat'][$k['id']] ?? 0 ?></td><?php endforeach; ?>
           <td class="text-center"><strong><?= $f['total'] ?> pts</strong></td>
           <td class="text-center"><?= $f['canje'] ?></td>
