@@ -109,7 +109,7 @@ body{font-family:'Quicksand',system-ui,sans-serif;background:#eef3ea;color:#3845
 function cara_frente($a, $esApoderado, $mascota, $tieneMascota){ ?>
   <div class="card front">
     <div class="franja"></div>
-    <div class="titulo">TARJETA DE PUNTOS</div>
+    <div class="titulo">PUNTOS ALERCES</div>
     <?php if($esApoderado): ?><span class="etiqueta-ap">APODERADO</span><?php endif; ?>
     <div class="pay">SIN CONTACTO</div>
     <div class="chip"></div><div class="nfc">)))</div>
