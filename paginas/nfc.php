@@ -129,7 +129,7 @@ $catsMasivo = $conn->query("SELECT * FROM categorias");
         <h4>ACERCAR SU TARJETA</h4>
         <p class="text-muted">Presiona un botón y pide al alumno que acerque su tarjeta o muestre su QR.</p>
         <p id="estado" class="fw-bold text-primary fs-5"></p>
-        <button class="btn btn-dark w-100 rounded-pill mb-2" onclick="iniciarEscaneo()">🛜 Escanear tarjeta NFC</button>
+        <!--button class="btn btn-dark w-100 rounded-pill mb-2" onclick="iniciarEscaneo()">🛜 Escanear tarjeta NFC</button-->
         <button class="btn btn-outline-dark w-100 rounded-pill" onclick="iniciarQR()">📷 Escanear código QR</button>
         <div id="lectorQR" class="mt-3" style="display:none; width:100%; max-width:320px; margin:auto"></div>
     </div>
