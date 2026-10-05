@@ -38,7 +38,7 @@ $esc = fn($t) => htmlspecialchars((string)$t, ENT_QUOTES, 'UTF-8');
   <div class="mt-1">
     © <?= date('Y') ?> by <strong>KombaJah</strong> ·
     <a href="https://instagram.com/losalercesdemaipu" target="_blank" rel="noopener">📷 Instagram</a>
-    <a href="https://wa.me/56912345678" target="_blank" rel="noopener">💬 WhatsApp</a>
+    <!--a href="https://wa.me/56912345678" target="_blank" rel="noopener">💬 WhatsApp</a-->
   </div>
 </footer>
 
