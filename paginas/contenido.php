@@ -26,25 +26,25 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
       }
 
     } elseif (isset($_POST['crear_alumno'])) {
-      $cid=(int)$_POST['curso_id']; $n=trim($_POST['nombre_alumno']); $uid=trim($_POST['nfc_uid']) ?: null; 
+      $cid=(int)$_POST['curso_id']; $n=trim($_POST['nombre_alumno']);
       $qr=nuevo_qr();$qr_apoderado=nuevo_qr(); // QR generado automáticamente para el apoderado
       $abrirId=$cid;
       if (!curso_existe($conn,$cid))$error = "Curso no válido.";
       elseif (!cupo($conn,$cid))$error = "El curso ya tiene el máximo de 50 alumnos.";
       else { 
-        $s=$conn->prepare("INSERT INTO alumnos (curso_id,nombre,nfc_uid,qr_code,qr_apoderado) VALUES (?,?,?,?,?)");
-        $s->bind_param("issss",$cid,$n,$uid,$qr,$qr_apoderado); $s->execute();$mensaje="Alumno registrado (QRs generados automáticamente)."; 
+        $s=$conn->prepare("INSERT INTO alumnos (curso_id,nombre,qr_code,qr_apoderado) VALUES (?,?,?,?)");
+        $s->bind_param("isss",$cid,$n,$qr,$qr_apoderado); $s->execute();$mensaje="Alumno registrado (QRs generados automáticamente)."; 
       }
 
     } elseif (isset($_POST['editar_alumno'])) {
-      $id=(int)$_POST['id']; $cid=(int)$_POST['curso_id']; $n=trim($_POST['nombre_alumno']); $uid=trim($_POST['nfc_uid']) ?: null;
+      $id=(int)$_POST['id']; $cid=(int)$_POST['curso_id']; $n=trim($_POST['nombre_alumno']);
       $s=$conn->prepare("SELECT curso_id FROM alumnos WHERE id=?"); $s->bind_param("i",$id);$s->execute();
       $act=$s->get_result()->fetch_assoc();
       if ($act) $abrirId=(int)$act['curso_id'];
       if (!$act || !curso_existe($conn,$cid))$error = "Alumno o curso no válido.";
       elseif (!cupo($conn,$cid,$id))$error = "El curso destino ya tiene 50 alumnos.";
       else {
-        $s=$conn->prepare("UPDATE alumnos SET curso_id=?, nombre=?, nfc_uid=? WHERE id=?"); $s->bind_param("issi",$cid,$n,$uid,$id);$s->execute();
+        $s=$conn->prepare("UPDATE alumnos SET curso_id=?, nombre=? WHERE id=?"); $s->bind_param("isi",$cid,$n,$id);$s->execute();
         if (!empty($_POST['regen_qr'])) { 
           $q=nuevo_qr();$q_apod=nuevo_qr(); 
           $s=$conn->prepare("UPDATE alumnos SET qr_code=?, qr_apoderado=? WHERE id=?"); 
@@ -65,14 +65,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
       elseif (!curso_existe($conn,$id))$error = "Curso no válido.";
       else { $s=$conn->prepare("DELETE FROM cursos WHERE id=?"); $s->bind_param("i",$id); $s->execute();$mensaje="Curso eliminado."; $abrirId=0; }
     }
-  } catch (mysqli_sql_exception $e) {$error = "No se pudo guardar (¿tarjeta NFC ya asignada a otro alumno?)."; }
+  } catch (mysqli_sql_exception $e) {$error = "No se pudo guardar. Intenta nuevamente."; }
 }
 
 // --- Listados ---
 // Resumen por curso (solo contadores: los alumnos se cargan únicamente del curso que está abierto)
 $cursos = $conn->query("SELECT c.*,
-    (SELECT COUNT(*) FROM alumnos WHERE curso_id=c.id) tot,
-    (SELECT COUNT(*) FROM alumnos WHERE curso_id=c.id AND nfc_uid IS NOT NULL AND nfc_uid<>'') con_nfc
+    (SELECT COUNT(*) FROM alumnos WHERE curso_id=c.id) tot
   FROM cursos c ORDER BY c.nombre")->fetch_all(MYSQLI_ASSOC);
 usort($cursos, fn($x,$y) => strnatcasecmp($x['nombre'], $y['nombre'])); // orden natural: 2° antes que 10°
 $totalAlumnos = array_sum(array_column($cursos,'tot'));
@@ -81,7 +80,6 @@ $totalAlumnos = array_sum(array_column($cursos,'tot'));
 $ed = ($_SERVER["REQUEST_METHOD"]=="POST" && $mensaje) ? 0 : (int)($_GET['editar'] ?? 0);
 
 $q = trim($_GET['q'] ?? ''); if (mb_strlen($q) > 60) $q = mb_substr($q,0,60);
-$sinNfc = !empty($_GET['sin_nfc']);
 
 $resultados = []; $hayMas = false; $alumnosAbierto = [];
 if ($q !== '') {
@@ -99,11 +97,11 @@ if ($q !== '') {
     if ($r=$s->get_result()->fetch_assoc()) $abrirId=(int)$r['curso_id'];
   }
   if ($abrirId) {
-    $sql = "SELECT * FROM alumnos WHERE curso_id=?".($sinNfc ? " AND (nfc_uid IS NULL OR nfc_uid='')" : "")." ORDER BY nombre";
+    $sql = "SELECT * FROM alumnos WHERE curso_id=? ORDER BY nombre";
     $s=$conn->prepare($sql); $s->bind_param("i",$abrirId); $s->execute();
     $alumnosAbierto = $s->get_result()->fetch_all(MYSQLI_ASSOC);
   }
-  $volver = 'curso='.$abrirId.($sinNfc ? '&sin_nfc=1' : '');
+  $volver = 'curso='.$abrirId;
 }
 
 // El panel "Agregar" se mantiene abierto al crear (para registrar varios seguidos), si hay un error o si no hay cursos
@@ -122,8 +120,6 @@ function fila_alumno($a, $cursos, $ed, $baseUrl, $volver, $mostrarCurso = false)
     <input type="hidden" name="id" value="<?= $id ?>">
     <input type="text" name="nombre_alumno" class="form-control mb-2" value="<?= h($a['nombre']) ?>" required>
     <select name="curso_id" class="form-select mb-2"><?php foreach($cursos as $c2): ?><option value="<?= (int)$c2['id'] ?>" <?= $c2['id']==$a['curso_id']?'selected':'' ?>><?= h($c2['nombre']) ?></option><?php endforeach; ?></select>
-    <div class="input-group mb-2"><input type="text" name="nfc_uid" id="nfc_ed" class="form-control" value="<?= h($a['nfc_uid']) ?>" placeholder="Sin tarjeta NFC">
-      <button class="btn btn-dark" type="button" onclick="leerNFC('nfc_ed')">Escanear NFC</button></div>
     <div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="regen_qr" value="1" id="rq"><label class="form-check-label" for="rq">Generar nuevos QRs (Alumno y Apoderado)</label></div>
     <button name="editar_alumno" class="btn btn-sm btn-primary">Guardar</button> <a href="?<?= h($volver) ?>" class="btn btn-sm btn-light">Cancelar</a>
   </form>
@@ -131,7 +127,6 @@ function fila_alumno($a, $cursos, $ed, $baseUrl, $volver, $mostrarCurso = false)
   <div id="a-<?= $id ?>" class="d-flex justify-content-between align-items-center border-top py-2 gap-2">
     <div style="min-width:0">
       <?= h($a['nombre']) ?>
-      <span class="badge <?= $a['nfc_uid']?'bg-success':'bg-secondary' ?>">NFC <?= $a['nfc_uid']?'✓':'—' ?></span>
       <?php if ($mostrarCurso): ?><a href="?curso=<?= (int)$a['curso_id'] ?>#c-<?= (int)$a['curso_id'] ?>" class="badge bg-light text-dark border text-decoration-none"><?= h($a['curso_nombre'] ?? '') ?></a><?php endif; ?>
     </div>
     <div class="dropdown flex-shrink-0">
@@ -166,8 +161,6 @@ function fila_alumno($a, $cursos, $ed, $baseUrl, $volver, $mostrarCurso = false)
   <?php if($mensaje) echo "<div class='alert alert-success'>".h($mensaje)."</div>"; ?>
   <?php if($error) echo "<div class='alert alert-danger'>".h($error)."</div>"; ?>
 
-  <div id="statusNFC" class="alert alert-info py-2 mb-3 text-center fw-bold" style="display:none;"></div>
-
   <!-- Barra superior: resumen, buscador y botón Agregar -->
   <div class="card p-3 shadow-sm mb-3">
     <div class="d-flex flex-wrap gap-2 align-items-center">
@@ -200,11 +193,7 @@ function fila_alumno($a, $cursos, $ed, $baseUrl, $volver, $mostrarCurso = false)
             <option value="" disabled <?= $abrirId?'':'selected' ?>>Elige un curso...</option>
             <?php foreach($cursos as $c): ?><option value="<?= (int)$c['id'] ?>" <?= $c['id']==$abrirId?'selected':'' ?>><?= h($c['nombre']) ?> (<?= (int)$c['tot'] ?>/50)</option><?php endforeach; ?>
           </select>
-          <input type="text" name="nombre_alumno" id="inp_nombre" class="form-control mb-2" required placeholder="Nombre del alumno" <?= $cursos?'':'disabled' ?>>
-          <div class="input-group mb-1">
-            <input type="text" name="nfc_uid" id="nfc_uid" class="form-control" placeholder="Tarjeta NFC (opcional)">
-            <button class="btn btn-dark" type="button" onclick="leerNFC('nfc_uid')">Escanear NFC</button>
-          </div>
+          <input type="text" name="nombre_alumno" id="inp_nombre" class="form-control mb-1" required placeholder="Nombre del alumno" <?= $cursos?'':'disabled' ?>>
           <small class="text-muted d-block mb-3">Se generarán automáticamente los códigos QR del alumno y del apoderado.</small>
           <button name="crear_alumno" class="btn btn-success w-100" <?= $cursos?'':'disabled' ?>>Guardar Alumno</button>
         </form>
@@ -237,15 +226,13 @@ function fila_alumno($a, $cursos, $ed, $baseUrl, $volver, $mostrarCurso = false)
     <?php if (!$cursos): ?><div class="text-muted p-3 pt-0">Aún no hay cursos. Usa «＋ Agregar» para crear el primero.</div><?php endif; ?>
 
     <?php foreach($cursos as $c):
-      $cid = (int)$c['id']; $abierto = ($cid === $abrirId);
-      $nfcClase = ($c['tot']==0) ? 'bg-secondary' : (($c['con_nfc']==$c['tot']) ? 'bg-success' : 'bg-warning text-dark'); ?>
+      $cid = (int)$c['id']; $abierto = ($cid === $abrirId); ?>
     <div class="curso-wrap border-top" data-nombre="<?= h($c['nombre']) ?>">
       <a id="c-<?= $cid ?>" class="curso-link d-flex align-items-center gap-2 px-3 py-2 text-decoration-none <?= $abierto?'abierto':'' ?>"
          href="<?= $abierto ? 'contenido.php#c-'.$cid : '?curso='.$cid.'#c-'.$cid ?>">
         <span class="flecha"><?= $abierto?'▾':'▸' ?></span>
         <span class="flex-grow-1"><?= h($c['nombre']) ?></span>
         <span class="badge bg-light text-dark border"><?= (int)$c['tot'] ?>/50</span>
-        <span class="badge <?= $nfcClase ?>" title="Alumnos con tarjeta NFC">NFC <?= (int)$c['con_nfc'] ?>/<?= (int)$c['tot'] ?></span>
       </a>
 
       <?php if ($abierto): ?>
@@ -253,14 +240,13 @@ function fila_alumno($a, $cursos, $ed, $baseUrl, $volver, $mostrarCurso = false)
         <div class="d-flex flex-wrap gap-2 mb-2">
           <button type="button" class="btn btn-sm btn-success" onclick="agregarEn(<?= $cid ?>)">＋ Registrar alumno</button>
           <a href="tarjetas_imprimir.php?curso=<?= $cid ?>" target="_blank" class="btn btn-sm btn-outline-primary">🖨️ Imprimir QRs</a>
-          <a href="?curso=<?= $cid ?><?= $sinNfc ? '' : '&amp;sin_nfc=1' ?>#c-<?= $cid ?>" class="btn btn-sm <?= $sinNfc ? 'btn-warning' : 'btn-outline-secondary' ?>">Solo sin tarjeta NFC</a>
           <?php if(es_admin()): ?>
           <form method="POST" action="contenido.php" class="d-inline" onsubmit="return confirm('¿Eliminar curso, sus alumnos y todos sus puntos?')">
             <input type="hidden" name="id" value="<?= $cid ?>"><button name="borrar_curso" class="btn btn-sm btn-outline-danger">Eliminar curso</button></form>
           <?php endif; ?>
         </div>
         <?php if (!$alumnosAbierto): ?>
-          <div class="text-muted py-2"><?= $sinNfc ? 'Todos los alumnos de este curso tienen tarjeta NFC 🎉' : 'Este curso aún no tiene alumnos.' ?></div>
+          <div class="text-muted py-2">Este curso aún no tiene alumnos.</div>
         <?php endif; ?>
         <?php foreach($alumnosAbierto as $a) fila_alumno($a, $cursos, $ed, $baseUrl, $volver); ?>
       </div>
@@ -285,42 +271,6 @@ function fila_alumno($a, $cursos, $ed, $baseUrl, $volver, $mostrarCurso = false)
 </div></div></div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-let ndef = null, destino = null;
-
-function mostrarStatus(msj, tipo = 'info') {
-  const box = document.getElementById('statusNFC');
-  box.className = `alert alert-${tipo} py-2 mb-3 text-center fw-bold`;
-  box.innerText = msj;
-  box.style.display = 'block';
-}
-
-function extraerCodigoNFC(event) {
-  if (event.serialNumber) return event.serialNumber.replace(/:/g, '').toUpperCase();
-  if (event.message && event.message.records) {
-    for (const record of event.message.records) {
-      if (record.recordType === "text" || record.recordType === "url") {
-        return new TextDecoder().decode(record.data).trim();
-      }
-    }
-  }
-  return null;
-}
-
-async function leerNFC(idCampo){
-  destino = idCampo;
-  if (!("NDEFReader" in window)) { mostrarStatus("⚠️ Web NFC no disponible.", "danger"); return; }
-  try {
-    if (!ndef) { 
-      ndef = new NDEFReader();
-      ndef.addEventListener("reading", (event) => { 
-        const codigo = extraerCodigoNFC(event);
-        if (codigo) { document.getElementById(destino).value = codigo; mostrarStatus("✅ Tarjeta asignada.", "success"); }
-      });
-    }
-    await ndef.scan(); mostrarStatus("🛜 Acerca la tarjeta...", "info");
-  } catch(e){ mostrarStatus("⚠️ Error NFC: " + (e.message || e), "danger"); }
-}
-
 function verReporte(token, nombre){
   const url = 'reporte_apoderado.php?token=' + encodeURIComponent(token);
   document.getElementById('repNombre').innerText = 'Reporte de ' + nombre;
