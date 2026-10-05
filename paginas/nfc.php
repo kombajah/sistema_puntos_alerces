@@ -123,6 +123,7 @@ $catsMasivo = $conn->query("SELECT * FROM categorias");
 <?php include 'menu.php'; ?>
 <div class="container mt-2">
     <?php if($mensaje) echo "<div class='alert alert-success'>". $mensaje ."</div>"; ?>
+    <div id="avisoAjax"></div>
     <?php if($error) echo "<div class='alert alert-danger'>". h($error) ."</div>"; ?>
 
     <div class="card p-3 shadow-sm text-center" id="estadoNFC">
@@ -142,7 +143,7 @@ $catsMasivo = $conn->query("SELECT * FROM categorias");
             <div id="saldoValor" class="fs-2 fw-bold lh-1">…</div>
             <div id="saldoDetalle" class="small text-muted"></div>
         </div>
-        <form method="POST" onsubmit="return validar()">
+        <form method="POST" onsubmit="return enviarAsignacion(event, 'individual')">
             <input type="hidden" name="alumno_id" id="alumno_id_input">
             <label class="form-label">Motivo</label>
             <select name="categoria_id" class="form-select mb-3" required>
@@ -168,7 +169,7 @@ $catsMasivo = $conn->query("SELECT * FROM categorias");
         <?php if(!$cursosMasivo): ?>
           <p class="text-muted">Primero crea un curso con alumnos en Contenido.</p>
         <?php else: ?>
-        <form method="POST" onsubmit="return validarMasivo()">
+        <form method="POST" onsubmit="return enviarAsignacion(event, 'masivo')">
             <select name="curso_id_masivo" class="form-select mb-3" required>
                 <option value="" disabled selected>Elige un curso...</option>
                 <?php foreach($cursosMasivo as $c): ?>
@@ -199,11 +200,39 @@ $catsMasivo = $conn->query("SELECT * FROM categorias");
 <script>
 let ndef = null, html5QrcodeScanner = null, ocupado = false;
 
+// --- AUDIO COMPATIBLE CON iPHONE (Safari) ---
+// Safari solo deja sonar el audio si se "desbloquea" dentro de un toque del usuario y la página
+// sigue abierta. Por eso la asignación se envía sin recargar y el audio se prepara en los toques.
+let audioCtx = null, monedasListo = false;
+const audioMonedas = new Audio('sonidos/monedas.mp3');
+audioMonedas.preload = 'auto';
+
+function desbloquearAudio() {
+    try {
+        // iOS 17+: que el audio suene aunque el interruptor de silencio esté activado
+        if (navigator.audioSession) navigator.audioSession.type = 'playback';
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) {
+            if (!audioCtx) audioCtx = new AC();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const b = audioCtx.createBuffer(1, 1, 22050), src = audioCtx.createBufferSource();
+            src.buffer = b; src.connect(audioCtx.destination); src.start(0);
+        }
+        if (!monedasListo) {
+            monedasListo = true;
+            audioMonedas.muted = true;
+            const p = audioMonedas.play();
+            if (p && p.then) p.then(() => { audioMonedas.pause(); audioMonedas.currentTime = 0; audioMonedas.muted = false; })
+                              .catch(() => { monedasListo = false; audioMonedas.muted = false; });
+        }
+    } catch (e) { /* sin audio disponible: se ignora */ }
+}
+
 // --- SINTETIZADOR DE SONIDO MONEDA MARIO BROS ---
 function reproducirSonidoMoneda(repeticiones = 1) {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
+    desbloquearAudio();
+    const ctx = audioCtx;
+    if (!ctx) return;
 
     for (let i = 0; i < repeticiones; i++) {
         const tiempoInicio = ctx.currentTime + (i * 0.35);
@@ -237,9 +266,11 @@ function reproducirSonidoMoneda(repeticiones = 1) {
 // --- SONIDO DE MONEDAS (asignación a todo el curso) ---
 // Reproduce sonidos/monedas.mp3; si el navegador no puede, usa el sintetizador como respaldo.
 function reproducirSonidoMonedas() {
-    const audio = new Audio('sonidos/monedas.mp3');
-    audio.volume = 0.9;
-    audio.play().catch(() => reproducirSonidoMoneda(3));
+    audioMonedas.muted = false;
+    audioMonedas.currentTime = 0;
+    audioMonedas.volume = 0.9;
+    const p = audioMonedas.play();
+    if (p && p.catch) p.catch(() => reproducirSonidoMoneda(3));
 }
 
 <?php if ($puntos_asignados > 0): ?>
@@ -254,15 +285,67 @@ function reproducirSonidoMonedas() {
 <?php endif; ?>
 
 function seleccionarPunto(v, el){
+    desbloquearAudio();
     el.closest('form').querySelectorAll('.btn-punto').forEach(b => b.classList.remove('active'));
     el.classList.add('active'); 
     document.getElementById('input_puntos').value = v;
 }
 
 function seleccionarPuntoMasivo(v, el){
+    desbloquearAudio();
     el.closest('form').querySelectorAll('.btn-punto').forEach(b => b.classList.remove('active'));
     el.classList.add('active');
     document.getElementById('input_puntos_masivo').value = v;
+}
+
+// Envía la asignación sin recargar la página, para que el sonido suene en iPhone.
+function enviarAsignacion(ev, tipo) {
+    const esMasivo = tipo === 'masivo';
+    if (!(esMasivo ? validarMasivo() : validar())) return false;
+    if (!window.fetch || !window.FormData) return true;   // navegador antiguo: envío normal
+    desbloquearAudio();
+    procesarAsignacion(ev.target, esMasivo);
+    return false;
+}
+
+async function procesarAsignacion(form, esMasivo) {
+    const btn = form.querySelector('button[type=submit]');
+    if (btn) btn.disabled = true;
+    const campoPts = document.getElementById(esMasivo ? 'input_puntos_masivo' : 'input_puntos');
+    const pts = parseInt(campoPts.value, 10) || 1;
+    const aviso = document.getElementById('avisoAjax');
+    try {
+        const fd = new FormData(form);
+        fd.append(esMasivo ? 'asignar_masivo' : 'asignar_puntos', '1');
+        const r = await fetch(location.href, { method: 'POST', body: fd, credentials: 'same-origin' });
+        const doc = new DOMParser().parseFromString(await r.text(), 'text/html');
+        const ok = doc.querySelector('.alert-success'), mal = doc.querySelector('.alert-danger');
+        if (!ok && !mal) { location.reload(); return; }   // p. ej. la sesión venció
+        aviso.innerHTML = '';
+        [ok, mal].forEach(n => {
+            if (!n) return;
+            const d = document.createElement('div');
+            d.className = n.className; d.innerHTML = n.innerHTML;
+            aviso.appendChild(d);
+        });
+        if (ok) {
+            if (esMasivo) reproducirSonidoMonedas(); else reproducirSonidoMoneda(pts);
+            form.reset();
+            campoPts.value = '';
+            form.querySelectorAll('.btn-punto').forEach(b => b.classList.remove('active'));
+            if (!esMasivo) {   // listo para escanear al siguiente alumno
+                document.getElementById('formPuntos').style.display = 'none';
+                document.getElementById('estadoNFC').style.display = 'block';
+                document.getElementById('estado').innerText = '';
+                document.getElementById('lectorQR').style.display = 'none';
+            }
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) {
+        aviso.innerHTML = "<div class='alert alert-danger'>No se pudo confirmar la asignación. Revisa el Histórico antes de repetirla.</div>";
+    } finally {
+        if (btn) btn.disabled = false;
+    }
 }
 
 function validar(){ 
@@ -378,6 +461,7 @@ async function iniciarEscaneo(){
 }
 
 async function iniciarQR(){
+    desbloquearAudio();
     if (typeof Html5QrcodeScanner === 'undefined') { 
         document.getElementById('estado').innerText = "⚠️ Cargando librería QR..."; 
         return; 
