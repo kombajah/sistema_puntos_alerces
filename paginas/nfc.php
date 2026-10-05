@@ -1,140 +1,89 @@
-<?php
-require_once 'conexion.php'; 
-requiere_login();
-
-// Consulta de saldo (JSON) para el alumno escaneado. Vive en este mismo archivo
-// para no depender de que otro endpoint esté desplegado/ruteado en el servidor.
-if (isset($_GET['saldo'])) {
-    header('Content-Type: application/json; charset=utf-8');
-    $sid = (int)$_GET['saldo'];
-    $q = $conn->prepare("
-        SELECT
-          COALESCE((SELECT SUM(puntos) FROM registro_puntos WHERE alumno_id = a.id), 0) AS ganados,
-          COALESCE((SELECT SUM(puntos_virtuales) FROM canjes WHERE alumno_id = a.id), 0) AS canjeados
-        FROM alumnos a WHERE a.id = ?");
-    $q->bind_param("i", $sid);
-    $q->execute();
-    $row = $q->get_result()->fetch_assoc();
-    if (!$row) { echo json_encode(['error' => 'Alumno no encontrado']); exit; }
-    $g = (int)$row['ganados']; $c = (int)$row['canjeados'];
-    echo json_encode(['ganados' => $g, 'canjeados' => $c, 'saldo' => $g - $c]);
-    exit;
-}
-
-$mensaje = ''; 
-$error = '';
-$puntos_asignados = 0; // Variable para controlar las repeticiones del sonido en JS
-
-if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['asignar_puntos'])) {
-    $alumno = (int)($_POST['alumno_id'] ?? 0);
-    $cat    = (int)($_POST['categoria_id'] ?? 0);
-    $pts    = (int)($_POST['puntos'] ?? 0);
-
-    // Los cursos son compartidos: basta con que el alumno exista.
-    $s = $conn->prepare("SELECT id FROM alumnos WHERE id=?");
-    $s->bind_param("i", $alumno); 
-    $s->execute(); 
-    $r = $s->get_result()->fetch_assoc();
-
-    if (!$r) {
-        $error = "Alumno no válido.";
-    } elseif (!in_array($pts, [1, 2, 3], true)) {
-        $error = "Puntaje inválido.";
-    } else {
-        // Registrar puntos (guardando qué profesor y asignatura los asignó)
-        $mid = docente_id(); $asig = asignatura_docente($conn);
-        $s = $conn->prepare("INSERT INTO registro_puntos (alumno_id, categoria_id, puntos, maestro_id, asignatura_id) SELECT a.id, c.id, ?, ?, ? FROM alumnos a, categorias c WHERE a.id=? AND c.id=?");
-        $s->bind_param("iiiii", $pts, $mid, $asig, $alumno, $cat); 
-        $s->execute();
-
-        if ($s->affected_rows > 0) {
-            $puntos_asignados = $pts; // Guardar los puntos para el audio
-            
-            // Consultar una frase de refuerzo positivo aleatoria de la base de datos
-            $refuerzo = '';
-            $s_frase = $conn->prepare("SELECT frase FROM frases_refuerzo WHERE categoria_id = ? ORDER BY RAND() LIMIT 1");
-            $s_frase->bind_param("i", $cat);
-            $s_frase->execute();
-            $res_frase = $s_frase->get_result()->fetch_assoc();
-
-            if ($res_frase && !empty($res_frase['frase'])) {
-                $refuerzo = "<br><br>🌟 <em>\"" . h($res_frase['frase']) . "\"</em>";
-            }
-
-            $mensaje = "¡Puntos asignados correctamente!" . $refuerzo;
-        } else {
-            $error = "Motivo no válido.";
-        }
-    }
-}
-
-$puntos_masivos_alumnos = 0; // para el sonido: cuántos alumnos recibieron puntos en la asignación masiva
-
-if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['asignar_masivo'])) {
-    $curso = (int)($_POST['curso_id_masivo'] ?? 0);
-    $cat   = (int)($_POST['categoria_id_masivo'] ?? 0);
-    $pts   = (int)($_POST['puntos_masivo'] ?? 0);
-
-    $s = $conn->prepare("SELECT id FROM cursos WHERE id=?");
-    $s->bind_param("i", $curso); $s->execute();
-    $c = $s->get_result()->fetch_assoc();
-
-    if (!$c) {
-        $error = "Curso no válido.";
-    } elseif (!in_array($pts, [1, 2, 3], true)) {
-        $error = "Puntaje inválido.";
-    } else {
-        $s = $conn->prepare("SELECT id FROM categorias WHERE id=?");
-        $s->bind_param("i", $cat); $s->execute();
-        if (!$s->get_result()->fetch_assoc()) {
-            $error = "Motivo no válido.";
-        } else {
-            $mid = docente_id(); $asig = asignatura_docente($conn);
-            $s = $conn->prepare(
-                "INSERT INTO registro_puntos (alumno_id, categoria_id, puntos, maestro_id, asignatura_id, masivo)
-                 SELECT a.id, ?, ?, ?, ?, 1 FROM alumnos a WHERE a.curso_id = ?"
-            );
-            $s->bind_param("iiiii", $cat, $pts, $mid, $asig, $curso);
-            $s->execute();
-            $puntos_masivos_alumnos = $s->affected_rows;
-            if ($puntos_masivos_alumnos > 0) {
-                $mensaje = "¡Se asignaron $pts pt(s) a los $puntos_masivos_alumnos alumnos del curso!";
-            } else {
-                $error = "Ese curso no tiene alumnos registrados.";
-            }
-        }
-    }
-}
-
-// Cursos para el formulario de asignación masiva (solo el curso, sin asignatura)
-$cursosMasivo = $conn->query("SELECT c.id, c.nombre, (SELECT COUNT(*) FROM alumnos WHERE curso_id=c.id) total_alumnos FROM cursos c ORDER BY c.nombre")->fetch_all(MYSQLI_ASSOC);
-
-// Obtener categorías usando MySQLi
-$cats = $conn->query("SELECT * FROM categorias");
-$catsMasivo = $conn->query("SELECT * FROM categorias");
-?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <title>Ingreso NFC</title>
+    <title>Ingreso QR</title>
     <?php include 'head.php'; ?>
+    <style>
+        .card-qr {
+            border: none;
+            border-radius: 20px;
+            background: #ffffff;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+        }
+
+        .btn-qr-main {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            width: 100%;
+            max-width: 420px;
+            height: 90px; /* Tamaño que abarca el espacio equivalente a dos botones */
+            margin: 0 auto;
+            border: none;
+            border-radius: 18px;
+            background: linear-gradient(135deg, #2e44d3 0%, #1a2ab0 100%);
+            color: #ffffff;
+            font-size: 1.25rem;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            box-shadow: 0 8px 20px rgba(46, 68, 211, 0.3);
+            transition: all 0.25s ease-in-out;
+            cursor: pointer;
+        }
+
+        .btn-qr-main:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 25px rgba(46, 68, 211, 0.4);
+            background: linear-gradient(135deg, #374ee6 0%, #1f31c4 100%);
+            color: #ffffff;
+        }
+
+        .btn-qr-main:active {
+            transform: translateY(1px);
+            box-shadow: 0 4px 12px rgba(46, 68, 211, 0.2);
+        }
+
+        .btn-qr-main svg {
+            width: 28px;
+            height: 28px;
+            fill: currentColor;
+        }
+
+        #lectorQR {
+            border-radius: 16px;
+            overflow: hidden;
+            border: 2px dashed rgba(46, 68, 211, 0.3);
+            background: #f8fafc;
+        }
+    </style>
 </head>
 <body class="bg-light">
 <?php include 'menu.php'; ?>
-<div class="container mt-2">
-    <?php if($mensaje) echo "<div class='alert alert-success'>". $mensaje ."</div>"; ?>
-    <?php if($error) echo "<div class='alert alert-danger'>". h($error) ."</div>"; ?>
+<div class="container mt-4">
+    <?php if($mensaje) echo "<div class='alert alert-success rounded-3'>". $mensaje ."</div>"; ?>
+    <?php if($error) echo "<div class='alert alert-danger rounded-3'>". h($error) ."</div>"; ?>
 
-    <div class="card p-3 shadow-sm text-center" id="estadoNFC">
-        <h4>ACERCAR SU TARJETA</h4>
-        <p class="text-muted">Presiona un botón y pide al alumno que acerque su tarjeta o muestre su QR.</p>
-        <p id="estado" class="fw-bold text-primary fs-5"></p>
-        <button class="btn btn-dark w-100 rounded-pill mb-2" onclick="iniciarEscaneo()">🛜 Escanear tarjeta NFC</button>
-        <button class="btn btn-outline-dark w-100 rounded-pill" onclick="iniciarQR()">📷 Escanear código QR</button>
-        <div id="lectorQR" class="mt-3" style="display:none; width:100%; max-width:320px; margin:auto"></div>
+    <div class="card card-qr p-4 text-center" id="estadoNFC">
+        <h4 class="fw-bold text-dark mb-1">ESCANEAR CÓDIGO QR</h4>
+        <p class="text-muted small mb-4">Presiona el botón para activar la cámara e identificar al alumno.</p>
+        
+        <p id="estado" class="fw-bold text-primary fs-5 mb-3"></p>
+
+        <div class="d-flex justify-content-center">
+            <button class="btn-qr-main" onclick="iniciarQR()">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <path d="M3 4b1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm2 1v2h2V5H5zm8-1a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V4zm2 1v2h2V5h-2zM3 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H4a1 1 0 01-1-1v-4zm2 1v2h2v-2H5zm10-1a1 1 0 011-1h1a1 1 0 011 1v1a1 1 0 01-1 1h-1a1 1 0 01-1-1v-1zm-4 0a1 1 0 011-1h1a1 1 0 011 1v4a1 1 0 01-1 1h-1a1 1 0 01-1-1v-4zm4 4a1 1 0 011-1h4a1 1 0 011 1v1a1 1 0 01-1 1h-4a1 1 0 01-1-1v-1z"/>
+                </svg>
+                <span>Escanear código QR</span>
+            </button>
+        </div>
+
+        <div id="lectorQR" class="mt-4" style="display:none; width:100%; max-width:360px; margin:auto"></div>
     </div>
 
-    <div class="card p-4 mt-3 shadow-sm" id="formPuntos" style="display:none">
+    <div class="card card-qr p-4 mt-4" id="formPuntos" style="display:none">
         <h5 id="nombreAlumnoDisplay" class="text-primary mb-0"></h5>
         <p id="cursoDisplay" class="text-muted mb-2"></p>
         <div id="saldoBox" class="rounded-3 text-center py-2 mb-3" style="background:#e8f5e9;color:#2e7d32">
@@ -162,7 +111,7 @@ $catsMasivo = $conn->query("SELECT * FROM categorias");
         </form>
     </div>
 
-    <div class="card p-4 mt-3 shadow-sm">
+    <div class="card card-qr p-4 mt-4 mb-5">
         <h5 class="text-primary mb-1">👥 Asignar puntaje a todo el curso</h5>
         <p class="text-muted small">Útil para actividades grupales: todos los alumnos del curso reciben el mismo puntaje por el mismo motivo, de una sola vez.</p>
         <?php if(!$cursosMasivo): ?>
@@ -197,7 +146,7 @@ $catsMasivo = $conn->query("SELECT * FROM categorias");
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
 <script>
-let ndef = null, html5QrcodeScanner = null, ocupado = false;
+let html5QrcodeScanner = null, ocupado = false;
 
 // --- SINTETIZADOR DE SONIDO MONEDA MARIO BROS ---
 function reproducirSonidoMoneda(repeticiones = 1) {
@@ -208,7 +157,6 @@ function reproducirSonidoMoneda(repeticiones = 1) {
     for (let i = 0; i < repeticiones; i++) {
         const tiempoInicio = ctx.currentTime + (i * 0.35);
 
-        // Nota 1: B4 (987.77 Hz)
         const osc1 = ctx.createOscillator();
         const gain1 = ctx.createGain();
         osc1.type = 'square';
@@ -220,7 +168,6 @@ function reproducirSonidoMoneda(repeticiones = 1) {
         osc1.start(tiempoInicio);
         osc1.stop(tiempoInicio + 0.08);
 
-        // Nota 2: E5 (1318.51 Hz)
         const osc2 = ctx.createOscillator();
         const gain2 = ctx.createGain();
         osc2.type = 'square';
@@ -234,8 +181,6 @@ function reproducirSonidoMoneda(repeticiones = 1) {
     }
 }
 
-// --- SONIDO DE MONEDAS (asignación a todo el curso) ---
-// Reproduce sonidos/monedas.mp3; si el navegador no puede, usa el sintetizador como respaldo.
 function reproducirSonidoMonedas() {
     const audio = new Audio('sonidos/monedas.mp3');
     audio.volume = 0.9;
@@ -326,60 +271,9 @@ async function cargar(codigo){
     }
 }
 
-// Extrae el UID o los datos NDEF grabados en la tarjeta
-function extraerCodigoNFC(event) {
-    if (event.serialNumber) {
-        return event.serialNumber.replace(/:/g, '').toUpperCase();
-    }
-    
-    if (event.message && event.message.records) {
-        for (const record of event.message.records) {
-            if (record.recordType === "text") {
-                const textDecoder = new TextDecoder(record.encoding || "utf-8");
-                return textDecoder.decode(record.data).trim();
-            } else if (record.recordType === "url") {
-                const textDecoder = new TextDecoder();
-                return textDecoder.decode(record.data).trim();
-            }
-        }
-    }
-    return null;
-}
-
-async function iniciarEscaneo(){
-    await detenerQR();
-    const elemEstado = document.getElementById('estado');
-
-    if (!("NDEFReader" in window)) { 
-        elemEstado.innerText = "⚠️ Web NFC requiere Chrome en Android y HTTPS. Usa el lector QR."; 
-        return; 
-    }
-    try {
-        if (!ndef) { 
-            ndef = new NDEFReader(); 
-            ndef.addEventListener("reading", (event) => {
-                const codigo = extraerCodigoNFC(event);
-                if (codigo) {
-                    elemEstado.innerText = "⏳ Procesando tarjeta...";
-                    cargar(codigo);
-                } else {
-                    elemEstado.innerText = "⚠️ Tarjeta no reconocida o sin datos válidos.";
-                }
-            });
-            ndef.addEventListener("readingerror", () => {
-                elemEstado.innerText = "⚠️ Error al leer la tarjeta. Inténtalo de nuevo.";
-            });
-        }
-        await ndef.scan();
-        elemEstado.innerText = "🛜 Escaneando... Acerca la tarjeta ahora al teléfono.";
-    } catch(e){ 
-        elemEstado.innerText = "⚠️ Error al iniciar NFC: " + (e.message || e); 
-    }
-}
-
 async function iniciarQR(){
     if (typeof Html5QrcodeScanner === 'undefined') { 
-        document.getElementById('estado').innerText = "⚠️ Cargando librería QR..."; 
+        document.getElementById('estado').innerText = "⚠️️ Cargando librería QR..."; 
         return; 
     }
 
