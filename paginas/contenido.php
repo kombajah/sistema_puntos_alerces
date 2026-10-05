@@ -252,7 +252,7 @@ function fila_alumno($a, $cursos, $ed, $baseUrl, $volver, $mostrarCurso = false)
       <div class="px-3 pb-3">
         <div class="d-flex flex-wrap gap-2 mb-2">
           <button type="button" class="btn btn-sm btn-success" onclick="agregarEn(<?= $cid ?>)">＋ Registrar alumno</button>
-          <a href="tarjetas_imprimi.php?curso=<?= $cid ?>" target="_blank" class="btn btn-sm btn-outline-primary">🖨️ Imprimir QRs</a>
+          <a href="tarjetas_imprimir.php?curso=<?= $cid ?>" target="_blank" class="btn btn-sm btn-outline-primary">🖨️ Imprimir QRs</a>
           <a href="?curso=<?= $cid ?><?= $sinNfc ? '' : '&amp;sin_nfc=1' ?>#c-<?= $cid ?>" class="btn btn-sm <?= $sinNfc ? 'btn-warning' : 'btn-outline-secondary' ?>">Solo sin tarjeta NFC</a>
           <?php if(es_admin()): ?>
           <form method="POST" action="contenido.php" class="d-inline" onsubmit="return confirm('¿Eliminar curso, sus alumnos y todos sus puntos?')">
