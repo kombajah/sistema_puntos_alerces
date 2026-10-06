@@ -16,7 +16,11 @@ $abrirId = (int)($_GET['curso'] ?? 0);
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
   try {
-    if (isset($_POST['crear_curso'])) {
+    if ((isset($_POST['crear_curso']) || isset($_POST['crear_alumno'])) && !es_admin()) {
+      // Crear cursos y registrar alumnos es exclusivo del administrador (también se valida en el servidor).
+      $error = "Solo el administrador puede crear cursos o registrar alumnos.";
+
+    } elseif (isset($_POST['crear_curso'])) {
       $n = mb_substr(trim($_POST['nombre_curso'] ?? ''), 0, 100);
       if ($n === '') $error = "Escribe el nombre del curso.";
       else {
@@ -109,7 +113,7 @@ if ($q !== '') {
 }
 
 // El panel "Agregar" se mantiene abierto al crear (para registrar varios seguidos), si hay un error o si no hay cursos
-$abrirAgregar = !$cursos || $error || ($_SERVER["REQUEST_METHOD"]=="POST" && (isset($_POST['crear_alumno']) || isset($_POST['crear_curso'])));
+$abrirAgregar = es_admin() && (!$cursos || $error || ($_SERVER["REQUEST_METHOD"]=="POST" && (isset($_POST['crear_alumno']) || isset($_POST['crear_curso']))));
 
 // Detectar esquema y dominio base para construir la URL del apoderado
 $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
@@ -171,7 +175,9 @@ function fila_alumno($a, $cursos, $ed, $baseUrl, $volver, $mostrarCurso = false)
   <div class="card p-3 shadow-sm mb-3">
     <div class="d-flex flex-wrap gap-2 align-items-center">
       <h4 class="text-primary mb-0 me-auto">Contenido <small class="text-muted fs-6"><?= count($cursos) ?> cursos · <?= (int)$totalAlumnos ?> alumnos</small></h4>
+      <?php if (es_admin()): ?>
       <button class="btn btn-success" type="button" data-bs-toggle="collapse" data-bs-target="#panelAgregar" aria-expanded="<?= $abrirAgregar?'true':'false' ?>">＋ Agregar</button>
+      <?php endif; ?>
     </div>
     <form method="GET" action="contenido.php" class="d-flex gap-2 mt-3">
       <input type="search" name="q" class="form-control" placeholder="🔍 Buscar alumno por nombre..." value="<?= h($q) ?>" maxlength="60" aria-label="Buscar alumno">
@@ -180,7 +186,8 @@ function fila_alumno($a, $cursos, $ed, $baseUrl, $volver, $mostrarCurso = false)
     </form>
   </div>
 
-  <!-- Panel Agregar curso / Registrar alumno -->
+  <?php if (es_admin()): ?>
+  <!-- Panel Agregar curso / Registrar alumno (solo administrador) -->
   <div class="collapse <?= $abrirAgregar?'show':'' ?>" id="panelAgregar">
     <div class="row">
       <div class="col-md-6 mb-3"><div class="card p-4 shadow-sm h-100">
@@ -207,6 +214,7 @@ function fila_alumno($a, $cursos, $ed, $baseUrl, $volver, $mostrarCurso = false)
       </div></div>
     </div>
   </div>
+  <?php endif; ?>
 
 <?php if ($q !== ''): ?>
   <!-- Resultados de búsqueda -->
@@ -229,7 +237,7 @@ function fila_alumno($a, $cursos, $ed, $baseUrl, $volver, $mostrarCurso = false)
       <h5 class="mb-0 me-auto">Cursos</h5>
       <?php if (count($cursos) > 8): ?><input type="search" id="fcurso" class="form-control form-control-sm" style="max-width:220px" placeholder="Filtrar cursos..." aria-label="Filtrar cursos"><?php endif; ?>
     </div>
-    <?php if (!$cursos): ?><div class="text-muted p-3 pt-0">Aún no hay cursos. Usa «＋ Agregar» para crear el primero.</div><?php endif; ?>
+    <?php if (!$cursos): ?><div class="text-muted p-3 pt-0">Aún no hay cursos.<?= es_admin() ? ' Usa «＋ Agregar» para crear el primero.' : ' El administrador debe crearlos.' ?></div><?php endif; ?>
 
     <?php foreach($cursos as $c):
       $cid = (int)$c['id']; $abierto = ($cid === $abrirId); ?>
@@ -244,7 +252,7 @@ function fila_alumno($a, $cursos, $ed, $baseUrl, $volver, $mostrarCurso = false)
       <?php if ($abierto): ?>
       <div class="px-3 pb-3">
         <div class="d-flex flex-wrap gap-2 mb-2">
-          <button type="button" class="btn btn-sm btn-success" onclick="agregarEn(<?= $cid ?>)">＋ Registrar alumno</button>
+          <?php if(es_admin()): ?><button type="button" class="btn btn-sm btn-success" onclick="agregarEn(<?= $cid ?>)">＋ Registrar alumno</button><?php endif; ?>
           <a href="tarjetas_imprimir.php?curso=<?= $cid ?>" target="_blank" class="btn btn-sm btn-outline-primary">🖨️ Imprimir QRs</a>
           <?php if(es_admin()): ?>
           <form method="POST" action="contenido.php" class="d-inline" onsubmit="return confirm('¿Eliminar curso, sus alumnos y todos sus puntos?')">
