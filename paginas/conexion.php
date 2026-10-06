@@ -105,8 +105,12 @@ if (!function_exists('registrar_login')) {
       $ip = trim(explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'] ?? ($_SERVER['REMOTE_ADDR'] ?? ''))[0]);
       if (!filter_var($ip, FILTER_VALIDATE_IP)) $ip = null;
       $ua = mb_substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255);
-      $s = $conn->prepare("INSERT INTO log_sesiones (maestro_id, usuario, fecha, ip, user_agent) VALUES (?,?,?,?,?)");
-      $s->bind_param("issss", $maestroId, $usuario, $fecha, $ip, $ua);
+      // Ubicación aproximada: cabeceras que agrega Vercel según la IP (la ciudad viene codificada en URL).
+      $pais   = strtoupper(substr($_SERVER['HTTP_X_VERCEL_IP_COUNTRY'] ?? '', 0, 2)) ?: null;
+      $region = mb_substr(urldecode($_SERVER['HTTP_X_VERCEL_IP_COUNTRY_REGION'] ?? ''), 0, 10) ?: null;
+      $ciudad = mb_substr(urldecode($_SERVER['HTTP_X_VERCEL_IP_CITY'] ?? ''), 0, 100) ?: null;
+      $s = $conn->prepare("INSERT INTO log_sesiones (maestro_id, usuario, fecha, ip, pais, region, ciudad, user_agent) VALUES (?,?,?,?,?,?,?,?)");
+      $s->bind_param("isssssss", $maestroId, $usuario, $fecha, $ip, $pais, $region, $ciudad, $ua);
       $s->execute();
     } catch (Throwable $e) { /* sin registro, pero el usuario entra igual */ }
   }

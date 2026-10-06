@@ -22,7 +22,7 @@ $paginas = max(1, (int)ceil($total / $porPag));
 $pag = min($pag, $paginas);
 $off = ($pag - 1) * $porPag;
 
-$sql = "SELECT l.id, l.usuario, l.fecha, l.ip, l.user_agent, l.maestro_id,
+$sql = "SELECT l.id, l.usuario, l.fecha, l.ip, l.pais, l.region, l.ciudad, l.user_agent, l.maestro_id,
           NULLIF(TRIM(CONCAT(m.nombre,' ',m.apellido)),'') nombre, m.rol
         FROM log_sesiones l LEFT JOIN maestros m ON m.id = l.maestro_id
         WHERE 1=1 $where ORDER BY l.fecha DESC, l.id DESC LIMIT $porPag OFFSET $off";
@@ -32,6 +32,17 @@ $s->execute();
 $filas = $s->get_result()->fetch_all(MYSQLI_ASSOC);
 
 $usuarios = $conn->query("SELECT DISTINCT usuario FROM log_sesiones ORDER BY usuario")->fetch_all(MYSQLI_ASSOC);
+
+// "Santiago, RM, Chile" a partir de lo guardado (— si Vercel no entregó ubicación).
+function texto_ubicacion($f){
+  $partes = [];
+  if (!empty($f['ciudad'])) $partes[] = $f['ciudad'];
+  if (!empty($f['region'])) $partes[] = $f['region'];
+  if (!empty($f['pais'])) {
+    $partes[] = class_exists('Locale') ? (Locale::getDisplayRegion('-' . $f['pais'], 'es') ?: $f['pais']) : $f['pais'];
+  }
+  return $partes ? implode(', ', $partes) : '—';
+}
 
 // "Chrome · Android" a partir del user agent (el texto completo queda en el tooltip).
 function resumen_ua($ua){
@@ -73,7 +84,7 @@ $qs = fn($extra = []) => http_build_query(array_filter(array_merge(
     <div class="small text-muted mb-2"><?= $total ?> inicio<?= $total==1?'':'s' ?> de sesión · horario de Chile</div>
     <div class="table-responsive">
       <table class="table table-striped align-middle mb-0">
-        <thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Nombre</th><th>Rol</th><th>IP</th><th>Dispositivo</th></tr></thead>
+        <thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Nombre</th><th>Rol</th><th>IP</th><th>Ubicación (aprox.)</th><th>Dispositivo</th></tr></thead>
         <tbody>
         <?php foreach($filas as $f): ?>
           <tr>
@@ -83,9 +94,10 @@ $qs = fn($extra = []) => http_build_query(array_filter(array_merge(
             <td><?php if($f['maestro_id'] === null): ?><span class="badge bg-secondary">Usuario eliminado</span>
                 <?php else: ?><span class="badge <?= $f['rol']==='admin'?'bg-danger':'bg-success' ?>"><?= $f['rol']==='admin'?'Administrador':'Docente' ?></span><?php endif; ?></td>
             <td><?= $f['ip'] ? h($f['ip']) : '—' ?></td>
+            <td><?= h(texto_ubicacion($f)) ?></td>
             <td title="<?= h($f['user_agent'] ?? '') ?>"><?= h(resumen_ua($f['user_agent'])) ?></td>
           </tr>
-        <?php endforeach; if(!$filas) echo "<tr><td colspan='6' class='text-center text-muted'>Sin registros</td></tr>"; ?>
+        <?php endforeach; if(!$filas) echo "<tr><td colspan='7' class='text-center text-muted'>Sin registros</td></tr>"; ?>
         </tbody>
       </table>
     </div>
