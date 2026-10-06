@@ -18,8 +18,7 @@ iniciar_sesion();
 $permitidas = [
   'reporte.php','nfc.php','canje.php','historico.php','contenido.php','maestros.php',
   'tarjetas.php','tarjetas_imprimir.php','carga_masiva.php','plantilla_alumnos.php',
-  'qr.php','buscar_alumno.php','instalar.php','salir.php','reporte_apoderado.php','metas.php',
-  'log_sesiones.php'
+  'qr.php','buscar_alumno.php','instalar.php','salir.php','reporte_apoderado.php','metas.php'
 ];
 
 if (in_array($pagina, $permitidas, true)) {
@@ -38,13 +37,12 @@ if (isset($_SESSION['maestro'])) { header("Location: reporte.php"); exit; }
 $error = '';
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
   $u = $_POST['usuario'] ?? '';
-  $s = $conn->prepare("SELECT id, usuario, password, rol FROM maestros WHERE usuario = ?");
+  $s = $conn->prepare("SELECT id, password, rol FROM maestros WHERE usuario = ?");
   $s->bind_param("s", $u); $s->execute();
   $r = $s->get_result()->fetch_assoc();
   if ($r && password_verify($_POST['password'] ?? '', $r['password'])) {
     session_regenerate_id(true);
     $_SESSION['maestro'] = $u; $_SESSION['id'] = $r['id']; $_SESSION['rol'] = $r['rol'];
-    registrar_login($conn, (int)$r['id'], $r['usuario']);
     header("Location: reporte.php"); exit;
   }
   $error = "Usuario o contraseña incorrectos.";

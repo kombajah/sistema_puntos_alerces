@@ -11,7 +11,7 @@ $secundarios = [
   'tarjetas.php'     => '🪪 Tarjetas',
   'carga_masiva.php' => '📥 Carga masiva',
 ];
-if (es_admin()) { $secundarios['maestros.php'] = '🔑 Maestros'; $secundarios['log_sesiones.php'] = '🔐 Inicios de sesión'; }
+if (es_admin()) { $secundarios['maestros.php'] = '🔑 Maestros'; }
 $enMas = isset($secundarios[$act]);
 ?>
 <style>

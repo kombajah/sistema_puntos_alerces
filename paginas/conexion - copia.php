@@ -96,21 +96,6 @@ if (!function_exists('sql_nombre_maestro')) {
     return "COALESCE(NULLIF(TRIM(CONCAT($alias.nombre,' ',$alias.apellido)),''), $alias.usuario)";
   }
 }
-// Registra un inicio de sesión exitoso (hora de Chile). Nunca debe impedir el login: si la
-// tabla log_sesiones aún no existe o falla el INSERT, se ignora el error.
-if (!function_exists('registrar_login')) {
-  function registrar_login($conn, $maestroId, $usuario){
-    try {
-      $fecha = (new DateTime('now', new DateTimeZone('America/Santiago')))->format('Y-m-d H:i:s');
-      $ip = trim(explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'] ?? ($_SERVER['REMOTE_ADDR'] ?? ''))[0]);
-      if (!filter_var($ip, FILTER_VALIDATE_IP)) $ip = null;
-      $ua = mb_substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255);
-      $s = $conn->prepare("INSERT INTO log_sesiones (maestro_id, usuario, fecha, ip, user_agent) VALUES (?,?,?,?,?)");
-      $s->bind_param("issss", $maestroId, $usuario, $fecha, $ip, $ua);
-      $s->execute();
-    } catch (Throwable $e) { /* sin registro, pero el usuario entra igual */ }
-  }
-}
 // Asignatura del maestro con sesión iniciada (null si no tiene). Se guarda en cada movimiento.
 if (!function_exists('asignatura_docente')) {
   function asignatura_docente($conn){
