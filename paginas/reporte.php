@@ -2,7 +2,16 @@
 require_once 'conexion.php'; requiere_login();
 $cursos = $conn->query("SELECT id, nombre FROM cursos ORDER BY nombre")->fetch_all(MYSQLI_ASSOC);
 usort($cursos, fn($x,$y) => strnatcasecmp($x['nombre'], $y['nombre'])); // orden natural: 2° antes que 10°
-$cats = $conn->query("SELECT * FROM categorias ORDER BY id")->fetch_all(MYSQLI_ASSOC);
+// Columnas: categorías base + las de meta del propio profesor (el admin ve además todas las que tienen puntos).
+// Los puntos de categorías de meta de otros profesores se suman en la columna "Otras".
+if (es_admin()) {
+  $cats = $conn->query("SELECT * FROM categorias WHERE docente_id IS NULL OR id IN (SELECT DISTINCT categoria_id FROM registro_puntos) ORDER BY id")->fetch_all(MYSQLI_ASSOC);
+} else {
+  $uidc = docente_id();
+  $sc = $conn->prepare("SELECT * FROM categorias WHERE docente_id IS NULL OR (docente_id=? AND (activa=1 OR id IN (SELECT DISTINCT categoria_id FROM registro_puntos))) ORDER BY id");
+  $sc->bind_param("i", $uidc); $sc->execute();
+  $cats = $sc->get_result()->fetch_all(MYSQLI_ASSOC);
+}
 $filtro = (int)($_GET['curso'] ?? 0);
 
 // --- Totales por curso ---
@@ -21,10 +30,9 @@ arsort($totalesAsignatura);
 
 // --- Metas de la semana actual (widget) ---
 $hoy = new DateTime(); $lunesHoy = (clone $hoy)->modify('monday this week')->format('Y-m-d');
-$sqlM = "SELECT mt.puntos_objetivo, mt.descripcion, c.nombre curso, ".sql_nombre_maestro('pm')." profesor,
-  COALESCE((SELECT SUM(r.puntos) FROM registro_puntos r JOIN alumnos al ON al.id=r.alumno_id
-            WHERE al.curso_id=c.id AND r.fecha >= mt.semana_inicio AND r.fecha < DATE_ADD(mt.semana_inicio, INTERVAL 7 DAY)),0) avance
-  FROM metas mt JOIN cursos c ON c.id=mt.curso_id LEFT JOIN maestros pm ON pm.id=mt.creado_por
+$sqlM = "SELECT mt.puntos_objetivo, mt.descripcion, k.nombre categoria, c.nombre curso, ".sql_nombre_maestro('pm')." profesor,
+  ".sql_avance_meta('mt','c')." avance
+  FROM metas mt JOIN cursos c ON c.id=mt.curso_id LEFT JOIN maestros pm ON pm.id=mt.creado_por LEFT JOIN categorias k ON k.id=mt.categoria_id
   WHERE mt.semana_inicio = ? ORDER BY c.nombre";
 $s=$conn->prepare($sqlM); $s->bind_param("s",$lunesHoy); $s->execute();
 $metasSemana = $s->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -44,6 +52,11 @@ foreach ($s->get_result() as $r) {
   $filas[$id] ??= ['alumno'=>$r['alumno'],'curso'=>$r['curso'],'cat'=>[],'total'=>0];
   if ($r['categoria_id']) { $filas[$id]['cat'][$r['categoria_id']] = (int)$r['pts']; $filas[$id]['total'] += (int)$r['pts']; }
 }
+$idsMostrados = array_column($cats, 'id'); $hayOtras = false;
+foreach ($filas as &$f) {
+  $suma = 0; foreach ($idsMostrados as $cid) $suma += $f['cat'][$cid] ?? 0;
+  $f['otras'] = $f['total'] - $suma; if ($f['otras'] > 0) $hayOtras = true;
+} unset($f);
 $can=[]; foreach($conn->query('SELECT alumno_id, SUM(puntos_virtuales) t FROM canjes GROUP BY alumno_id') as $q) $can[$q['alumno_id']]=(int)$q['t'];
 foreach($filas as $id=>&$f) $f['canje']=$can[$id]??0; unset($f);
 uasort($filas, fn($x,$y) => strnatcasecmp($x['curso'], $y['curso']) ?: ($y['total'] <=> $x['total']));
@@ -61,6 +74,7 @@ uasort($filas, fn($x,$y) => strnatcasecmp($x['curso'], $y['curso']) ?: ($y['tota
         <div class="d-flex justify-content-between small"><span><?= h($m['curso']) ?></span><span><?= (int)$m['avance'] ?> / <?= (int)$m['puntos_objetivo'] ?> pts</span></div>
         <div class="small">
           <span class="badge bg-secondary">👤 Profesor: <?= $m['profesor'] ? h($m['profesor']) : '—' ?></span>
+          <?php if(!empty($m['categoria'])): ?><span class="badge bg-info text-dark">🏷️ <?= h($m['categoria']) ?></span><?php endif; ?>
           <?php if(!empty($m['descripcion'])): ?><span class="text-muted fst-italic">📝 <?= h($m['descripcion']) ?></span><?php endif; ?>
         </div>
         <div style="background:#e6efe0;border-radius:8px;overflow:hidden;height:12px">
@@ -106,15 +120,17 @@ uasort($filas, fn($x,$y) => strnatcasecmp($x['curso'], $y['curso']) ?: ($y['tota
     <table class="table table-striped align-middle">
       <thead><tr><th class="text-nowrap">Curso</th><th style="min-width:220px">Alumno</th>
         <?php foreach($cats as $k): ?><th class="text-center"><?= h($k['nombre']) ?></th><?php endforeach; ?>
+        <?php if($hayOtras): ?><th class="text-center">Otras</th><?php endif; ?>
         <th class="text-center">Total</th><th class="text-center">Canjeado</th><th class="text-center">Saldo</th></tr></thead>
       <tbody>
       <?php foreach($filas as $f): ?>
         <tr><td class="text-nowrap"><?= h($f['curso']) ?></td><td><?= h($f['alumno']) ?></td>
           <?php foreach($cats as $k): ?><td class="text-center"><?= $f['cat'][$k['id']] ?? 0 ?></td><?php endforeach; ?>
+          <?php if($hayOtras): ?><td class="text-center"><?= (int)$f['otras'] ?></td><?php endif; ?>
           <td class="text-center"><strong><?= $f['total'] ?> pts</strong></td>
           <td class="text-center"><?= $f['canje'] ?></td>
           <td class="text-center"><strong><?= $f['total']-$f['canje'] ?></strong></td></tr>
-      <?php endforeach; if(!$filas) echo "<tr><td colspan='".(5+count($cats))."' class='text-center text-muted'>Sin datos</td></tr>"; ?>
+      <?php endforeach; if(!$filas) echo "<tr><td colspan='".(5+count($cats)+($hayOtras?1:0))."' class='text-center text-muted'>Sin datos</td></tr>"; ?>
       </tbody>
     </table>
   </div>

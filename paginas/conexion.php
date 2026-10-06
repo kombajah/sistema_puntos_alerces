@@ -115,6 +115,42 @@ if (!function_exists('registrar_login')) {
     } catch (Throwable $e) { /* sin registro, pero el usuario entra igual */ }
   }
 }
+// --- Categorías de meta ---
+// categorias.docente_id NULL = categoría base (todos); con valor = categoría propia de ese profesor.
+// Categorías que el profesor con sesión puede usar al asignar puntos: las base + sus propias activas.
+if (!function_exists('categorias_disponibles')) {
+  function categorias_disponibles($conn){
+    $id = docente_id();
+    $s = $conn->prepare("SELECT id, nombre, docente_id FROM categorias WHERE docente_id IS NULL OR (docente_id=? AND activa=1) ORDER BY (docente_id IS NOT NULL), id");
+    $s->bind_param("i", $id); $s->execute();
+    return $s->get_result()->fetch_all(MYSQLI_ASSOC);
+  }
+}
+// Imprime las <option> de categorías (las propias van agrupadas aparte).
+if (!function_exists('opciones_categorias')) {
+  function opciones_categorias($cats){
+    $propias = [];
+    foreach ($cats as $c) {
+      if ($c['docente_id'] === null) echo "<option value='".(int)$c['id']."'>".h($c['nombre'])."</option>";
+      else $propias[] = $c;
+    }
+    if ($propias) {
+      echo "<optgroup label='Mis categorías de meta'>";
+      foreach ($propias as $c) echo "<option value='".(int)$c['id']."'>".h($c['nombre'])."</option>";
+      echo "</optgroup>";
+    }
+  }
+}
+// Subconsulta con el avance de una meta: puntos asignados DENTRO de su semana (lunes a domingo), solo de los
+// alumnos del curso y solo con la categoría de la meta. Meta sin categoría (antiguas) = todos los puntos.
+if (!function_exists('sql_avance_meta')) {
+  function sql_avance_meta($mt='mt', $c='c'){
+    return "COALESCE((SELECT SUM(r.puntos) FROM registro_puntos r JOIN alumnos al ON al.id=r.alumno_id
+              WHERE al.curso_id=$c.id
+                AND r.fecha >= $mt.semana_inicio AND r.fecha < DATE_ADD($mt.semana_inicio, INTERVAL 7 DAY)
+                AND ($mt.categoria_id IS NULL OR r.categoria_id = $mt.categoria_id)),0)";
+  }
+}
 // Asignatura del maestro con sesión iniciada (null si no tiene). Se guarda en cada movimiento.
 if (!function_exists('asignatura_docente')) {
   function asignatura_docente($conn){

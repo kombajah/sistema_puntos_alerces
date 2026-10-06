@@ -43,8 +43,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['asignar_puntos'])) {
     } else {
         // Registrar puntos (guardando qué profesor y asignatura los asignó)
         $mid = docente_id(); $asig = asignatura_docente($conn);
-        $s = $conn->prepare("INSERT INTO registro_puntos (alumno_id, categoria_id, puntos, maestro_id, asignatura_id) SELECT a.id, c.id, ?, ?, ? FROM alumnos a, categorias c WHERE a.id=? AND c.id=?");
-        $s->bind_param("iiiii", $pts, $mid, $asig, $alumno, $cat); 
+        $s = $conn->prepare("INSERT INTO registro_puntos (alumno_id, categoria_id, puntos, maestro_id, asignatura_id) SELECT a.id, c.id, ?, ?, ? FROM alumnos a, categorias c WHERE a.id=? AND c.id=? AND (c.docente_id IS NULL OR (c.docente_id=? AND c.activa=1))");
+        $s->bind_param("iiiiii", $pts, $mid, $asig, $alumno, $cat, $mid); 
         $s->execute();
 
         if ($s->affected_rows > 0) {
@@ -84,8 +84,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['asignar_masivo'])) {
     } elseif (!in_array($pts, [1, 2, 3], true)) {
         $error = "Puntaje inválido.";
     } else {
-        $s = $conn->prepare("SELECT id FROM categorias WHERE id=?");
-        $s->bind_param("i", $cat); $s->execute();
+        $midc = docente_id();
+        $s = $conn->prepare("SELECT id FROM categorias WHERE id=? AND (docente_id IS NULL OR (docente_id=? AND activa=1))");
+        $s->bind_param("ii", $cat, $midc); $s->execute();
         if (!$s->get_result()->fetch_assoc()) {
             $error = "Motivo no válido.";
         } else {
@@ -110,8 +111,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['asignar_masivo'])) {
 $cursosMasivo = $conn->query("SELECT c.id, c.nombre, (SELECT COUNT(*) FROM alumnos WHERE curso_id=c.id) total_alumnos FROM cursos c ORDER BY c.nombre")->fetch_all(MYSQLI_ASSOC);
 
 // Obtener categorías usando MySQLi
-$cats = $conn->query("SELECT * FROM categorias");
-$catsMasivo = $conn->query("SELECT * FROM categorias");
+$catsDisp = categorias_disponibles($conn); // base + mis categorías de meta activas
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -148,9 +148,7 @@ $catsMasivo = $conn->query("SELECT * FROM categorias");
             <label class="form-label">Motivo</label>
             <select name="categoria_id" class="form-select mb-3" required>
                 <option value="" disabled selected>Elige un motivo...</option>
-                <?php while($r = $cats->fetch_assoc()): ?>
-                    <option value="<?= (int)$r['id'] ?>"><?= h($r['nombre']) ?></option>
-                <?php endwhile; ?>
+                <?php opciones_categorias($catsDisp); ?>
             </select>
             <label class="form-label">Cantidad de puntos:</label>
             <div class="d-flex justify-content-between mb-4">
@@ -178,9 +176,7 @@ $catsMasivo = $conn->query("SELECT * FROM categorias");
             </select>
             <select name="categoria_id_masivo" class="form-select mb-3" required>
                 <option value="" disabled selected>Elige un motivo...</option>
-                <?php while($r = $catsMasivo->fetch_assoc()): ?>
-                    <option value="<?= (int)$r['id'] ?>"><?= h($r['nombre']) ?></option>
-                <?php endwhile; ?>
+                <?php opciones_categorias($catsDisp); ?>
             </select>
             <label class="form-label">Cantidad de puntos:</label>
             <div class="d-flex justify-content-between mb-4">

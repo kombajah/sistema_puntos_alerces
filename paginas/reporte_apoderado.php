@@ -34,6 +34,7 @@ $stmtCat = $conn->prepare("
   FROM categorias cat
   LEFT JOIN registro_puntos p ON p.categoria_id = cat.id AND p.alumno_id = ?
   GROUP BY cat.id, cat.nombre
+  HAVING cat.docente_id IS NULL OR COALESCE(SUM(p.puntos), 0) > 0  -- las categorías de meta solo si el alumno tiene puntos
   ORDER BY cat.nombre ASC
 ");
 $stmtCat->bind_param("i", $alumno_id);
