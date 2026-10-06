@@ -36,6 +36,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $s->bind_param("isss",$cid,$n,$qr,$qr_apoderado); $s->execute();$mensaje="Alumno registrado (QRs generados automáticamente)."; 
       }
 
+    } elseif ((isset($_POST['editar_alumno']) || isset($_POST['borrar_alumno'])) && !es_admin()) {
+      // Editar o eliminar alumnos es exclusivo del administrador (también se valida en el servidor).
+      $error = "Solo el administrador puede editar o eliminar alumnos.";
+
     } elseif (isset($_POST['editar_alumno'])) {
       $id=(int)$_POST['id']; $cid=(int)$_POST['curso_id']; $n=trim($_POST['nombre_alumno']);
       $s=$conn->prepare("SELECT curso_id FROM alumnos WHERE id=?"); $s->bind_param("i",$id);$s->execute();
@@ -77,7 +81,7 @@ usort($cursos, fn($x,$y) => strnatcasecmp($x['nombre'], $y['nombre'])); // orden
 $totalAlumnos = array_sum(array_column($cursos,'tot'));
 
 // Edición: se mantiene abierto tras un error, se cierra tras guardar
-$ed = ($_SERVER["REQUEST_METHOD"]=="POST" && $mensaje) ? 0 : (int)($_GET['editar'] ?? 0);
+$ed = ($_SERVER["REQUEST_METHOD"]=="POST" && $mensaje) ? 0 : (es_admin() ? (int)($_GET['editar'] ?? 0) : 0);
 
 $q = trim($_GET['q'] ?? ''); if (mb_strlen($q) > 60) $q = mb_substr($q,0,60);
 
@@ -137,9 +141,11 @@ function fila_alumno($a, $cursos, $ed, $baseUrl, $volver, $mostrarCurso = false)
         <li><button type="button" class="dropdown-item" data-qr="<?= h($baseUrl . $a['qr_apoderado']) ?>" data-titulo="Apoderado de: <?= h($a['nombre']) ?>" onclick="verQR(this.dataset.qr,this.dataset.titulo)">QR Apoderado</button></li>
         <li><button type="button" class="dropdown-item" data-token="<?= h($a['qr_apoderado']) ?>" data-nombre="<?= h($a['nombre']) ?>" onclick="verReporte(this.dataset.token,this.dataset.nombre)">📄 Reporte</button></li>
         <?php endif; ?>
+        <?php if (es_admin()): ?>
         <li><a class="dropdown-item" href="?<?= h($volver) ?>&amp;editar=<?= $id ?>#a-<?= $id ?>">Editar</a></li>
         <li><hr class="dropdown-divider"></li>
         <li><form method="POST" onsubmit="return confirm('¿Eliminar alumno?')"><input type="hidden" name="id" value="<?= $id ?>"><button name="borrar_alumno" class="dropdown-item text-danger">Eliminar</button></form></li>
+        <?php endif; ?>
       </ul>
     </div>
   </div>
