@@ -70,7 +70,7 @@ usort($mov, fn($x,$y)=>[$y['fecha'],$y['id']]<=>[$x['fecha'],$x['id']]);
       <?php foreach($mov as $m): ?>
         <tr><td><?= h(date('d/m/Y H:i', strtotime($m['fecha']))) ?></td><td><?= h($m['curso']) ?></td><td><?= $m['asignatura'] ? h($m['asignatura']) : '—' ?></td><td><?= h($m['alumno']) ?></td><td><?= $m['profesor'] ? h($m['profesor']) : '—' ?></td>
           <td><?= $m['tipo']=='ganado' ? '<span class="badge bg-success">Ganado</span>' : '<span class="badge bg-warning text-dark">Canje</span>' ?></td>
-          <td><?= h($m['detalle']) ?><?= !empty($m['masivo']) ? ' <span class="badge bg-secondary">👥 Asignación masiva (curso)</span>' : '' ?></td>
+          <td><?= h($m['detalle']) ?><?= !empty($m['masivo']) ? ' <span class="badge bg-secondary">👥 Asignación masiva (todo el curso)</span>' : '' ?></td>
           <td class="text-center <?= $m['delta']>0?'text-success':'text-danger' ?>"><strong><?= $m['delta']>0?'+':'' ?><?= (int)$m['delta'] ?></strong></td>
           <td class="text-center"><?= (int)$m['saldo'] ?></td></tr>
       <?php endforeach; if(!$mov) echo "<tr><td colspan='9' class='text-center text-muted'>Sin movimientos</td></tr>"; ?>

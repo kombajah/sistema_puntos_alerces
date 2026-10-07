@@ -2,17 +2,6 @@
 require_once 'conexion.php'; 
 requiere_login();
 
-// Lista de alumnos de un curso (JSON) para poder excluir alumnos en la asignación masiva.
-if (isset($_GET['alumnos_curso'])) {
-    header('Content-Type: application/json; charset=utf-8');
-    $cid = (int)$_GET['alumnos_curso'];
-    $q = $conn->prepare("SELECT id, nombre FROM alumnos WHERE curso_id = ? ORDER BY nombre");
-    $q->bind_param("i", $cid);
-    $q->execute();
-    echo json_encode(['alumnos' => $q->get_result()->fetch_all(MYSQLI_ASSOC)]);
-    exit;
-}
-
 // Consulta de saldo (JSON) para el alumno escaneado. Vive en este mismo archivo
 // para no depender de que otro endpoint esté desplegado/ruteado en el servidor.
 if (isset($_GET['saldo'])) {
@@ -102,41 +91,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['asignar_masivo'])) {
             $error = "Motivo no válido.";
         } else {
             $mid = docente_id(); $asig = asignatura_docente($conn);
-
-            // Alumnos marcados en la lista (los desmarcados quedan excluidos).
-            // Si la lista no se cargó (navegador antiguo), se asigna a todo el curso como antes.
-            $lista_cargada = isset($_POST['lista_cargada']);
-            $incluir = array_values(array_unique(array_filter(
-                array_map('intval', (array)($_POST['incluir'] ?? [])), fn($v) => $v > 0
-            )));
-
-            $s = $conn->prepare("SELECT COUNT(*) n FROM alumnos WHERE curso_id=?");
-            $s->bind_param("i", $curso); $s->execute();
-            $total_curso = (int)$s->get_result()->fetch_assoc()['n'];
-
-            if ($lista_cargada && !$incluir) {
-                $error = "Debes dejar al menos un alumno seleccionado.";
+            $s = $conn->prepare(
+                "INSERT INTO registro_puntos (alumno_id, categoria_id, puntos, maestro_id, asignatura_id, masivo)
+                 SELECT a.id, ?, ?, ?, ?, 1 FROM alumnos a WHERE a.curso_id = ?"
+            );
+            $s->bind_param("iiiii", $cat, $pts, $mid, $asig, $curso);
+            $s->execute();
+            $puntos_masivos_alumnos = $s->affected_rows;
+            if ($puntos_masivos_alumnos > 0) {
+                $mensaje = "¡Se asignaron $pts pt(s) a los $puntos_masivos_alumnos alumnos del curso!";
             } else {
-                $sql = "INSERT INTO registro_puntos (alumno_id, categoria_id, puntos, maestro_id, asignatura_id, masivo)
-                        SELECT a.id, ?, ?, ?, ?, 1 FROM alumnos a WHERE a.curso_id = ?";
-                $tipos = "iiiii";
-                $params = [$cat, $pts, $mid, $asig, $curso];
-                if ($lista_cargada) {
-                    $sql .= " AND a.id IN (" . implode(',', array_fill(0, count($incluir), '?')) . ")";
-                    $tipos .= str_repeat('i', count($incluir));
-                    $params = array_merge($params, $incluir);
-                }
-                $s = $conn->prepare($sql);
-                $s->bind_param($tipos, ...$params);
-                $s->execute();
-                $puntos_masivos_alumnos = $s->affected_rows;
-                if ($puntos_masivos_alumnos > 0) {
-                    $excluidos = $total_curso - $puntos_masivos_alumnos;
-                    $mensaje = "¡Se asignaron $pts pt(s) a $puntos_masivos_alumnos alumno(s) del curso!"
-                             . ($excluidos > 0 ? " ($excluidos excluido(s))" : "");
-                } else {
-                    $error = "Ese curso no tiene alumnos registrados.";
-                }
+                $error = "Ese curso no tiene alumnos registrados.";
             }
         }
     }
@@ -203,23 +168,12 @@ $catsDisp = categorias_disponibles($conn); // base + mis categorías de meta act
           <p class="text-muted">Primero crea un curso con alumnos en Contenido.</p>
         <?php else: ?>
         <form method="POST" onsubmit="return enviarAsignacion(event, 'masivo')">
-            <select name="curso_id_masivo" id="cursoMasivo" class="form-select mb-3" required onchange="cargarAlumnosMasivo(this.value)">
+            <select name="curso_id_masivo" class="form-select mb-3" required>
                 <option value="" disabled selected>Elige un curso...</option>
                 <?php foreach($cursosMasivo as $c): ?>
                     <option value="<?= (int)$c['id'] ?>"><?= h($c['nombre']) ?> (<?= (int)$c['total_alumnos'] ?> alumnos)</option>
                 <?php endforeach; ?>
             </select>
-            <div id="listaMasivo" class="border rounded-3 p-2 mb-3" style="display:none">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <span class="small fw-bold" id="resumenMasivo"></span>
-                    <span>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="marcarTodosMasivo(true)">Todos</button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="marcarTodosMasivo(false)">Ninguno</button>
-                    </span>
-                </div>
-                <p class="text-muted small mb-2">Desmarca a quienes <b>no</b> deben recibir puntos (ausentes o no aplica).</p>
-                <div id="alumnosMasivo" style="max-height:260px;overflow-y:auto"></div>
-            </div>
             <select name="categoria_id_masivo" class="form-select mb-3" required>
                 <option value="" disabled selected>Elige un motivo...</option>
                 <?php opciones_categorias($catsDisp); ?>
@@ -231,7 +185,7 @@ $catsDisp = categorias_disponibles($conn); // base + mis categorías de meta act
                 <?php endforeach; ?>
             </div>
             <input type="hidden" name="puntos_masivo" id="input_puntos_masivo">
-            <button type="submit" name="asignar_masivo" class="btn w-100 rounded-pill fs-5 text-white" style="background:#d99a5b" onclick="return confirmarMasivo()">Asignar puntaje</button>
+            <button type="submit" name="asignar_masivo" class="btn w-100 rounded-pill fs-5 text-white" style="background:#d99a5b" onclick="return confirm('¿Asignar este puntaje a TODOS los alumnos del curso elegido?')">Asignar a todo el curso</button>
         </form>
         <?php endif; ?>
     </div>
@@ -333,59 +287,6 @@ function seleccionarPunto(v, el){
     document.getElementById('input_puntos').value = v;
 }
 
-// --- Asignación masiva: lista de alumnos con exclusión ---
-async function cargarAlumnosMasivo(cursoId){
-    const caja = document.getElementById('listaMasivo'), cont = document.getElementById('alumnosMasivo');
-    caja.style.display = 'none'; cont.innerHTML = '';
-    document.querySelectorAll('#listaMasivo ~ input[name=lista_cargada], input[name=lista_cargada]').forEach(n => n.remove());
-    if (!cursoId) return;
-    try {
-        const r = await fetch("nfc.php?alumnos_curso=" + encodeURIComponent(cursoId), { credentials: 'same-origin' });
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        const d = await r.json();
-        (d.alumnos || []).forEach(a => {
-            const l = document.createElement('label');
-            l.className = 'd-flex align-items-center gap-2 py-1 border-bottom';
-            const c = document.createElement('input');
-            c.type = 'checkbox'; c.name = 'incluir[]'; c.value = a.id; c.checked = true;
-            c.className = 'form-check-input m-0'; c.onchange = actualizarResumenMasivo;
-            const t = document.createElement('span'); t.textContent = a.nombre;
-            l.appendChild(c); l.appendChild(t); cont.appendChild(l);
-        });
-        if (!d.alumnos || !d.alumnos.length) { cont.innerHTML = '<p class="text-muted small m-0">Este curso no tiene alumnos.</p>'; }
-        else {
-            const h = document.createElement('input');
-            h.type = 'hidden'; h.name = 'lista_cargada'; h.value = '1';
-            document.getElementById('cursoMasivo').form.appendChild(h);
-        }
-        caja.style.display = 'block';
-        actualizarResumenMasivo();
-    } catch(e) {
-        cont.innerHTML = '<p class="text-danger small m-0">No se pudo cargar la lista de alumnos. Vuelve a elegir el curso.</p>';
-        caja.style.display = 'block';
-    }
-}
-
-function marcarTodosMasivo(v){
-    document.querySelectorAll('#alumnosMasivo input[type=checkbox]').forEach(c => c.checked = v);
-    actualizarResumenMasivo();
-}
-
-function actualizarResumenMasivo(){
-    const todos = document.querySelectorAll('#alumnosMasivo input[type=checkbox]');
-    const marc = [...todos].filter(c => c.checked).length;
-    document.getElementById('resumenMasivo').textContent = marc + ' de ' + todos.length + ' alumnos recibirán puntos';
-}
-
-function confirmarMasivo(){
-    const todos = document.querySelectorAll('#alumnosMasivo input[type=checkbox]');
-    if (!todos.length) return confirm('¿Asignar este puntaje a TODOS los alumnos del curso elegido?');
-    const marc = [...todos].filter(c => c.checked).length;
-    if (!marc) { alert('Debes dejar al menos un alumno seleccionado.'); return false; }
-    const exc = todos.length - marc;
-    return confirm('¿Asignar este puntaje a ' + marc + ' alumno(s)' + (exc ? ' (excluyendo a ' + exc + ')' : '') + '?');
-}
-
 function seleccionarPuntoMasivo(v, el){
     desbloquearAudio();
     el.closest('form').querySelectorAll('.btn-punto').forEach(b => b.classList.remove('active'));
@@ -427,7 +328,6 @@ async function procesarAsignacion(form, esMasivo) {
             if (esMasivo) reproducirSonidoMonedas(); else reproducirSonidoMoneda(pts);
             form.reset();
             campoPts.value = '';
-            if (esMasivo) cargarAlumnosMasivo('');
             form.querySelectorAll('.btn-punto').forEach(b => b.classList.remove('active'));
             if (!esMasivo) {   // listo para escanear al siguiente alumno
                 document.getElementById('formPuntos').style.display = 'none';
