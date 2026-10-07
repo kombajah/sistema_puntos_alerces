@@ -92,7 +92,7 @@ $qs = fn($extra = []) => http_build_query(array_filter(array_merge(
             <td><strong><?= h($f['usuario']) ?></strong></td>
             <td><?= $f['nombre'] ? h($f['nombre']) : '—' ?></td>
             <td><?php if($f['maestro_id'] === null): ?><span class="badge bg-secondary">Usuario eliminado</span>
-                <?php else: ?><span class="badge <?= $f['rol']==='admin'?'bg-danger':'bg-success' ?>"><?= $f['rol']==='admin'?'Administrador':'Docente' ?></span><?php endif; ?></td>
+                <?php else: ?><span class="badge <?= $f['rol']==='admin'?'bg-warning':'bg-success' ?>"><?= $f['rol']==='admin'?'Administrador':'Docente' ?></span><?php endif; ?></td>
             <td><?= $f['ip'] ? h($f['ip']) : '—' ?></td>
             <td><?= h(texto_ubicacion($f)) ?></td>
             <td title="<?= h($f['user_agent'] ?? '') ?>"><?= h(resumen_ua($f['user_agent'])) ?></td>
