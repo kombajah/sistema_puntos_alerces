@@ -31,12 +31,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     else {
       $tasa = tasa($conn); $costo = $base * $tasa;
       $mid = docente_id(); $asig = asignatura_docente($conn);
-      $s = $conn->prepare("INSERT INTO canjes (alumno_id,puntos_virtuales,puntos_base,observacion,maestro_id,asignatura_id,fecha)
-        SELECT a.id,?,?,?,?,?,? FROM alumnos a WHERE a.id=?
+      $s = $conn->prepare("INSERT INTO canjes (alumno_id,puntos_virtuales,puntos_base,observacion,maestro_id,asignatura_id)
+        SELECT a.id,?,?,?,?,? FROM alumnos a WHERE a.id=?
         AND (COALESCE((SELECT SUM(puntos) FROM registro_puntos WHERE alumno_id=a.id),0)
            - COALESCE((SELECT SUM(puntos_virtuales) FROM canjes WHERE alumno_id=a.id),0)) >= ?");
-      $fecha = ahora_chile();
-      $s->bind_param("iisiisii", $costo, $base, $obs, $mid, $asig, $fecha, $alumno, $costo); $s->execute();
+      $s->bind_param("iisiiii", $costo, $base, $obs, $mid, $asig, $alumno, $costo); $s->execute();
       if ($s->affected_rows > 0) { $mensaje = "Canje registrado: -$costo pts virtuales → +$base pt(s) base."; $canje_exitoso = true; }
       else $error = "Saldo insuficiente (se necesitan $costo pts virtuales).";
     }
@@ -50,12 +49,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     else {
       $costo = (int)$opcion['costo_puntos'];
       $mid = docente_id(); $asig = asignatura_docente($conn);
-      $s = $conn->prepare("INSERT INTO canjes (alumno_id,puntos_virtuales,puntos_base,observacion,opcion_id,nombre_opcion,maestro_id,asignatura_id,fecha)
-        SELECT a.id,?,0,?,?,?,?,?,? FROM alumnos a WHERE a.id=?
+      $s = $conn->prepare("INSERT INTO canjes (alumno_id,puntos_virtuales,puntos_base,observacion,opcion_id,nombre_opcion,maestro_id,asignatura_id)
+        SELECT a.id,?,0,?,?,?,?,? FROM alumnos a WHERE a.id=?
         AND (COALESCE((SELECT SUM(puntos) FROM registro_puntos WHERE alumno_id=a.id),0)
            - COALESCE((SELECT SUM(puntos_virtuales) FROM canjes WHERE alumno_id=a.id),0)) >= ?");
-      $fecha = ahora_chile();
-      $s->bind_param("isisiisii", $costo, $obs, $opcionId, $opcion['nombre'], $mid, $asig, $fecha, $alumno, $costo); $s->execute();
+      $s->bind_param("isisiiii", $costo, $obs, $opcionId, $opcion['nombre'], $mid, $asig, $alumno, $costo); $s->execute();
       if ($s->affected_rows > 0) { $mensaje = "Canje registrado: -$costo pts virtuales → ".$opcion['nombre']."."; $canje_exitoso = true; }
       else $error = "Saldo insuficiente (se necesitan $costo pts virtuales).";
     }

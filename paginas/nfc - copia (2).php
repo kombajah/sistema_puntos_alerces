@@ -54,9 +54,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['asignar_puntos'])) {
     } else {
         // Registrar puntos (guardando qué profesor y asignatura los asignó)
         $mid = docente_id(); $asig = asignatura_docente($conn);
-        $s = $conn->prepare("INSERT INTO registro_puntos (alumno_id, categoria_id, puntos, maestro_id, asignatura_id, fecha) SELECT a.id, c.id, ?, ?, ?, ? FROM alumnos a, categorias c WHERE a.id=? AND c.id=? AND (c.docente_id IS NULL OR (c.docente_id=? AND c.activa=1))");
-        $fecha = ahora_chile();
-        $s->bind_param("iiisiii", $pts, $mid, $asig, $fecha, $alumno, $cat, $mid); 
+        $s = $conn->prepare("INSERT INTO registro_puntos (alumno_id, categoria_id, puntos, maestro_id, asignatura_id) SELECT a.id, c.id, ?, ?, ? FROM alumnos a, categorias c WHERE a.id=? AND c.id=? AND (c.docente_id IS NULL OR (c.docente_id=? AND c.activa=1))");
+        $s->bind_param("iiiiii", $pts, $mid, $asig, $alumno, $cat, $mid); 
         $s->execute();
 
         if ($s->affected_rows > 0) {
@@ -118,10 +117,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['asignar_masivo'])) {
             if ($lista_cargada && !$incluir) {
                 $error = "Debes dejar al menos un alumno seleccionado.";
             } else {
-                $sql = "INSERT INTO registro_puntos (alumno_id, categoria_id, puntos, maestro_id, asignatura_id, masivo, fecha)
-                        SELECT a.id, ?, ?, ?, ?, 1, ? FROM alumnos a WHERE a.curso_id = ?";
-                $tipos = "iiiisi";
-                $params = [$cat, $pts, $mid, $asig, ahora_chile(), $curso];
+                $sql = "INSERT INTO registro_puntos (alumno_id, categoria_id, puntos, maestro_id, asignatura_id, masivo)
+                        SELECT a.id, ?, ?, ?, ?, 1 FROM alumnos a WHERE a.curso_id = ?";
+                $tipos = "iiiii";
+                $params = [$cat, $pts, $mid, $asig, $curso];
                 if ($lista_cargada) {
                     $sql .= " AND a.id IN (" . implode(',', array_fill(0, count($incluir), '?')) . ")";
                     $tipos .= str_repeat('i', count($incluir));

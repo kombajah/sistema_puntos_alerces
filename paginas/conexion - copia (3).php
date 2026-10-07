@@ -19,13 +19,6 @@ try {
   $conn->ssl_set(null, null, $DB_CA, null, null);
   $conn->real_connect($DB_HOST, $DB_USER, $DB_PASS, $DB_NAME, $DB_PORT, null, MYSQLI_CLIENT_SSL);
   $conn->set_charset('utf8mb4');
-  // Hora de Chile para la base de datos: así CURRENT_TIMESTAMP / NOW() (fecha del histórico, canjes,
-  // metas semanales) quedan en hora chilena y respetan el cambio de horario de verano. Se usa el
-  // desfase actual (-03:00 / -04:00) para no depender de las tablas de zonas horarias del servidor.
-  try {
-    $off = (new DateTime('now', new DateTimeZone('America/Santiago')))->format('P');
-    $conn->query("SET time_zone = '" . $off . "'");
-  } catch (Throwable $e) { /* si falla, sigue funcionando con la hora del servidor */ }
 } catch (mysqli_sql_exception $e) {
   http_response_code(500);
   die("No se pudo conectar a la base de datos. Revisa las variables de entorno DB_HOST/DB_PORT/DB_USER/DB_PASS/DB_NAME en Vercel y que certs/ca.pem esté presente en el repositorio.");
@@ -33,12 +26,6 @@ try {
 
 if (!function_exists('h')) {
   function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
-}
-
-// Fecha y hora actual de Chile (Y-m-d H:i:s). Se guarda de forma explícita en los movimientos
-// para que no dependan de la zona horaria que tenga configurada el servidor de base de datos.
-if (!function_exists('ahora_chile')) {
-  function ahora_chile(){ return (new DateTime('now', new DateTimeZone('America/Santiago')))->format('Y-m-d H:i:s'); }
 }
 
 // --- Sesiones guardadas en la base de datos (no en archivos): en Vercel cada solicitud
@@ -56,9 +43,9 @@ if (!class_exists('SesionBD')) {
       return $r ? $r['datos'] : '';
     }
     function write($id, $datos): bool {
-      // 2 horas de inactividad, calculadas con el reloj de la base (el mismo que usa NOW() al leer)
-      $s = $this->conn->prepare("INSERT INTO sesiones (id,datos,expira) VALUES (?,?,DATE_ADD(NOW(), INTERVAL 2 HOUR)) ON DUPLICATE KEY UPDATE datos=VALUES(datos), expira=VALUES(expira)");
-      $s->bind_param("ss", $id, $datos);
+      $exp = date('Y-m-d H:i:s', time() + 7200); // 2 horas de inactividad
+      $s = $this->conn->prepare("INSERT INTO sesiones (id,datos,expira) VALUES (?,?,?) ON DUPLICATE KEY UPDATE datos=VALUES(datos), expira=VALUES(expira)");
+      $s->bind_param("sss", $id, $datos, $exp);
       return $s->execute();
     }
     function destroy($id): bool {
