@@ -1,9 +1,9 @@
 <?php
 require_once 'conexion.php'; requiere_login();
 if (!es_admin()) { http_response_code(403); die("Solo el administrador puede gestionar maestros."); }
-$mensaje=''; $error='';
-$ed  = (int)($_GET['editar'] ?? 0);       // maestro en edición
-$eda = (int)($_GET['editar_asig'] ?? 0);  // asignatura en edición
+$mensaje=''; $error=''; $nuevoId = 0; $abrirAsig = false;
+// Las acciones de edición se envían por fetch (sin recargar); se responde JSON.
+$esAjax = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'fetch');
 
 function asignatura_existe($conn,$id){
   if ($id <= 0) return false;
@@ -142,19 +142,22 @@ if ($_SERVER["REQUEST_METHOD"]=="POST") {
   try {
     // ---------- MANTENEDOR DE ASIGNATURAS (movido desde Contenido) ----------
     if (isset($_POST['crear_asignatura'])) {
+      $abrirAsig = true;
       $n = mb_substr(trim($_POST['nombre_asignatura'] ?? ''), 0, 100);
       if ($n === '') $error = "Escribe el nombre de la asignatura.";
       elseif (nombre_asignatura_repetido($conn,$n)) $error = "Esa asignatura ya existe.";
       else { $s=$conn->prepare("INSERT INTO asignaturas (nombre) VALUES (?)"); $s->bind_param("s",$n); $s->execute(); $mensaje = "Asignatura creada."; }
 
     } elseif (isset($_POST['editar_asignatura'])) {
+      $abrirAsig = true;
       $id=(int)$_POST['id']; $n = mb_substr(trim($_POST['nombre_asignatura'] ?? ''), 0, 100);
       if ($n === '') $error = "Escribe el nombre de la asignatura.";
       elseif (!asignatura_existe($conn,$id)) $error = "Asignatura no válida.";
       elseif (nombre_asignatura_repetido($conn,$n,$id)) $error = "Ya existe otra asignatura con ese nombre.";
-      else { $s=$conn->prepare("UPDATE asignaturas SET nombre=? WHERE id=?"); $s->bind_param("si",$n,$id); $s->execute(); $mensaje = "Asignatura actualizada."; $eda = 0; }
+      else { $s=$conn->prepare("UPDATE asignaturas SET nombre=? WHERE id=?"); $s->bind_param("si",$n,$id); $s->execute(); $mensaje = "Asignatura actualizada."; }
 
     } elseif (isset($_POST['borrar_asignatura'])) {
+      $abrirAsig = true;
       $id=(int)$_POST['id'];
       $s=$conn->prepare("SELECT
           (SELECT COUNT(*) FROM maestros WHERE asignatura_id=?) maestros,
@@ -183,7 +186,7 @@ if ($_SERVER["REQUEST_METHOD"]=="POST") {
         // clave_texto: solo para docentes, se usa únicamente para imprimir su tarjeta de acceso.
         $claveTxt = ($rol==='docente') ? $p : null;
         $s=$conn->prepare("INSERT INTO maestros (nombre,apellido,usuario,password,clave_texto,rol,asignatura_id) VALUES (?,?,?,?,?,?,?)");
-        $s->bind_param("ssssssi",$nom,$ape,$u,$h,$claveTxt,$rol,$aidVal); $s->execute(); $mensaje="Maestro creado.";
+        $s->bind_param("ssssssi",$nom,$ape,$u,$h,$claveTxt,$rol,$aidVal); $s->execute(); $nuevoId = (int)$conn->insert_id; $mensaje="Maestro creado.";
       }
 
     } elseif (isset($_POST['editar_maestro'])) {
@@ -199,7 +202,7 @@ if ($_SERVER["REQUEST_METHOD"]=="POST") {
       else {
         $aidVal = $aid > 0 ? $aid : null;
         $s=$conn->prepare("UPDATE maestros SET nombre=?, apellido=?, asignatura_id=? WHERE id=?");
-        $s->bind_param("ssii",$nom,$ape,$aidVal,$id); $s->execute(); $mensaje="Maestro actualizado."; $ed = 0;
+        $s->bind_param("ssii",$nom,$ape,$aidVal,$id); $s->execute(); $mensaje="Maestro actualizado.";
       }
 
     } elseif (isset($_POST['clave'])) {
@@ -220,6 +223,22 @@ if ($_SERVER["REQUEST_METHOD"]=="POST") {
   }
 }
 
+if ($esAjax) {
+  header('Content-Type: application/json; charset=utf-8');
+  $out = ['ok' => ($error === ''), 'mensaje' => $mensaje, 'error' => $error];
+  if ($out['ok'] && isset($_POST['editar_maestro'])) {
+    $s = $conn->prepare("SELECT m.nombre, m.apellido, m.usuario, m.asignatura_id, ag.nombre asignatura FROM maestros m LEFT JOIN asignaturas ag ON ag.id=m.asignatura_id WHERE m.id=?");
+    $idr = (int)$_POST['id']; $s->bind_param("i", $idr); $s->execute();
+    $out['maestro'] = $s->get_result()->fetch_assoc();
+  }
+  if ($out['ok'] && isset($_POST['clave'])) {
+    $s = $conn->prepare("SELECT (clave_texto IS NOT NULL AND clave_texto <> '') tiene_clave FROM maestros WHERE id=?");
+    $idr = (int)$_POST['id']; $s->bind_param("i", $idr); $s->execute();
+    $r = $s->get_result()->fetch_assoc(); $out['tiene_clave'] = !empty($r['tiene_clave']);
+  }
+  echo json_encode($out, JSON_UNESCAPED_UNICODE); exit;
+}
+
 $asignaturas = $conn->query("SELECT ag.id, ag.nombre, (SELECT COUNT(*) FROM maestros WHERE asignatura_id=ag.id) tot FROM asignaturas ag ORDER BY ag.nombre")->fetch_all(MYSQLI_ASSOC);
 $m = $conn->query("SELECT m.id, m.nombre, m.apellido, m.usuario, m.rol, m.asignatura_id, ag.nombre asignatura,
                           (m.clave_texto IS NOT NULL AND m.clave_texto <> '') tiene_clave
@@ -228,151 +247,355 @@ $m = $conn->query("SELECT m.id, m.nombre, m.apellido, m.usuario, m.rol, m.asigna
 ?>
 <!DOCTYPE html><html lang="es"><head><title>Maestros</title><?php include 'head.php'; ?>
 <style>
-  .tabla-maestros thead th{background:#e8f2e4;color:#38452f;font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #cfe0c8;white-space:nowrap;padding:.65rem .75rem}
-  .tabla-maestros td{padding:.55rem .75rem}
-  .tabla-maestros .fila-edicion td{background:#fff8e6}
+  /* ---- Formulario compacto ---- */
+  .card-nuevo{padding:.9rem 1rem}
+  .card-nuevo h5{font-size:1.05rem}
+
+  /* ---- Herramientas (tarjetas / asignaturas) ---- */
+  details.herr{background:#fff;border:1px solid var(--forest-line);border-radius:16px;box-shadow:0 .125rem .25rem rgba(0,0,0,.075)}
+  details.herr>summary{list-style:none;cursor:pointer;padding:.7rem 1rem;display:flex;align-items:center;gap:.5rem;font-weight:700;color:var(--forest-primary-dark)}
+  details.herr>summary::-webkit-details-marker{display:none}
+  details.herr>summary .chev{margin-left:auto;transition:transform .15s;font-size:.8rem;opacity:.7}
+  details.herr[open]>summary .chev{transform:rotate(180deg)}
+  details.herr .herr-body{padding:0 1rem 1rem}
+  .lista-asig{max-height:260px;overflow-y:auto;border-top:1px solid var(--forest-line)}
+  .lista-asig .item{display:flex;justify-content:space-between;align-items:center;gap:.5rem;padding:.35rem 0;border-bottom:1px solid #eef3e9}
+  .lista-asig .item:last-child{border-bottom:0}
+  .item .e{display:none}
+  .item.editando .e{display:flex}
+  .item.editando .v{display:none}
+
+  /* ---- Tabla con scroll propio ---- */
+  .tabla-scroll{position:relative;overflow:auto;max-height:68vh;min-height:320px;border-top:1px solid var(--forest-line);border-radius:0 0 16px 16px;scroll-behavior:smooth}
+  .tabla-maestros{min-width:980px}
+  .tabla-maestros thead th{position:sticky;top:0;z-index:3;background:#e8f2e4;color:#38452f;font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #cfe0c8;white-space:nowrap;padding:.6rem .75rem}
+  .tabla-maestros td{padding:.45rem .75rem;background:#fff}
+  .tabla-maestros tbody tr:hover td{background:#f5f9f2}
+  /* la columna Nombre queda fija al desplazar horizontalmente */
+  .tabla-maestros th.col-nombre,.tabla-maestros td.col-nombre{position:sticky;left:0;box-shadow:1px 0 0 #e3ebdc}
+  .tabla-maestros th.col-nombre{z-index:4}
+  .tabla-maestros td.col-nombre{z-index:2}
+  .tabla-maestros tr.editando td{background:#fff8e6!important}
+  .tabla-maestros tr.oculta{display:none}
+  .tabla-maestros tr.flash td{animation:flashFila 1.6s ease-out}
+  @keyframes flashFila{0%,30%{background:#d8efcf!important}100%{background:#fff}}
+  .tabla-maestros .e{display:none}
+  .tabla-maestros tr.editando .e{display:flex}
+  .tabla-maestros tr.editando select.e{display:block}
+  .tabla-maestros tr.editando .v{display:none!important}
+  .sin-resultados{display:none;padding:1.5rem;text-align:center;color:#7c8b72}
+
+  /* ---- Volver arriba (dentro de la tabla) ---- */
+  .wrap-tabla{position:relative}
+  #btnArribaTabla{position:absolute;right:14px;bottom:14px;z-index:6;display:none;align-items:center;gap:6px;padding:7px 14px;border:0;border-radius:999px;background:#5fa43c;color:#fff;font-weight:700;font-size:.85rem;box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer}
+  #btnArribaTabla:hover{background:#4d8c2f}
+  #btnArribaTabla.visible{display:inline-flex}
+
+  /* ---- Avisos flotantes ---- */
+  #toasts{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:3000;display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none}
+  .toast-msg{pointer-events:auto;padding:8px 16px;border-radius:10px;font-size:.9rem;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.2);animation:entra .2s ease-out}
+  .toast-msg.ok{background:#e3f4dc;color:#2f5d2a;border:1px solid #b9dcae}
+  .toast-msg.err{background:#fde8e8;color:#8a2a2a;border:1px solid #f1bcbc}
+  @keyframes entra{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.toast-msg,.tabla-maestros tr.flash td{animation:none}.tabla-scroll{scroll-behavior:auto}}
 </style></head>
 <body class="bg-light"><?php include 'menu.php'; ?>
+<div id="toasts" aria-live="polite"></div>
 <div class="container mt-2">
-  <?php if($mensaje) echo "<div class='alert alert-success'>".h($mensaje)."</div>"; ?>
-  <?php if($error) echo "<div class='alert alert-danger'>".h($error)."</div>"; ?>
+  <?php if($mensaje) echo "<div class='alert alert-success py-2'>".h($mensaje)."</div>"; ?>
+  <?php if($error) echo "<div class='alert alert-danger py-2'>".h($error)."</div>"; ?>
 
-  <div class="row">
-    <div class="col-lg-7 mb-3"><div class="card p-4 shadow-sm h-100"><h4 class="text-primary mb-3">Nuevo maestro</h4>
-      <form method="POST" class="row g-2" autocomplete="off">
-        <div class="col-md-6"><input name="nombre" class="form-control" placeholder="Nombre" maxlength="100" required></div>
-        <div class="col-md-6"><input name="apellido" class="form-control" placeholder="Apellido" maxlength="100" required></div>
-        <div class="col-md-6"><input name="usuario" class="form-control" placeholder="Usuario" maxlength="50" autocomplete="off" required></div>
-        <div class="col-md-6"><input type="password" name="password" class="form-control" placeholder="Contraseña (mín. 6)" autocomplete="new-password" required></div>
-        <div class="col-md-6"><select name="asignatura_id" class="form-select">
-          <option value="">Elige una asignatura...</option>
-          <?php foreach($asignaturas as $a): ?><option value="<?= (int)$a['id'] ?>"><?= h($a['nombre']) ?></option><?php endforeach; ?>
-        </select></div>
-        <div class="col-md-3"><select name="rol" class="form-select"><option value="docente">Docente</option><option value="admin">Administrador</option></select></div>
-        <div class="col-md-3"><button name="crear" class="btn btn-primary w-100">Crear</button></div>
-      </form>
-      <?php if(!$asignaturas): ?><small class="text-danger d-block mt-2">Primero crea una asignatura (cuadro de la derecha).</small><?php endif; ?>
-      <small class="text-muted d-block mt-2">La asignatura es obligatoria para docentes; para administradores es opcional.</small>
-    </div></div>
+  <!-- ===== NUEVO MAESTRO (una sola fila en pantallas anchas) ===== -->
+  <div class="card card-nuevo shadow-sm mb-3">
+    <div class="d-flex flex-wrap align-items-baseline gap-2 mb-2">
+      <h5 class="text-primary mb-0">Nuevo maestro</h5>
+      <small class="text-muted">La asignatura es obligatoria para docentes; para administradores es opcional.</small>
+    </div>
+    <form method="POST" class="row g-2" autocomplete="off">
+      <div class="col-6 col-md-3 col-xl"><input name="nombre" class="form-control form-control-sm" placeholder="Nombre" maxlength="100" required></div>
+      <div class="col-6 col-md-3 col-xl"><input name="apellido" class="form-control form-control-sm" placeholder="Apellido" maxlength="100" required></div>
+      <div class="col-6 col-md-3 col-xl"><input name="usuario" class="form-control form-control-sm" placeholder="Usuario" maxlength="50" autocomplete="off" required></div>
+      <div class="col-6 col-md-3 col-xl"><input type="password" name="password" class="form-control form-control-sm" placeholder="Contraseña (mín. 6)" autocomplete="new-password" required></div>
+      <div class="col-6 col-md-4 col-xl"><select name="asignatura_id" class="form-select form-select-sm sel-asig">
+        <option value="">Asignatura...</option>
+        <?php foreach($asignaturas as $a): ?><option value="<?= (int)$a['id'] ?>"><?= h($a['nombre']) ?></option><?php endforeach; ?>
+      </select></div>
+      <div class="col-6 col-md-4 col-xl-auto"><select name="rol" class="form-select form-select-sm"><option value="docente">Docente</option><option value="admin">Administrador</option></select></div>
+      <div class="col-12 col-md-4 col-xl-auto"><button name="crear" class="btn btn-sm btn-primary w-100 px-4">Crear</button></div>
+    </form>
+    <?php if(!$asignaturas): ?><small class="text-danger d-block mt-2">Primero crea una asignatura (panel «Asignaturas» de abajo).</small><?php endif; ?>
+  </div>
 
-    <div class="col-lg-5 mb-3"><div class="card p-4 shadow-sm h-100"><h4 class="text-primary mb-3">Asignaturas</h4>
-      <form method="POST" class="d-flex gap-2 mb-3">
-        <input type="text" name="nombre_asignatura" class="form-control" required maxlength="100" placeholder="Ej: Lenguaje">
-        <button name="crear_asignatura" class="btn btn-primary">Agregar</button>
-      </form>
-      <?php foreach($asignaturas as $a): ?>
-        <?php if($eda==$a['id']): ?>
-        <form method="POST" class="d-flex gap-2 border-top py-2">
-          <input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
-          <input type="text" name="nombre_asignatura" class="form-control form-control-sm" value="<?= h($a['nombre']) ?>" maxlength="100" required>
-          <button name="editar_asignatura" class="btn btn-sm btn-primary">Guardar</button>
-          <a href="maestros.php" class="btn btn-sm btn-light">Cancelar</a>
-        </form>
-        <?php else: ?>
-        <div class="d-flex justify-content-between align-items-center border-top py-2">
-          <div><?= h($a['nombre']) ?> <small class="text-muted">(<?= (int)$a['tot'] ?> maestro<?= $a['tot']==1?'':'s' ?>)</small></div>
-          <div class="d-flex gap-1">
-            <a href="?editar_asig=<?= (int)$a['id'] ?>" class="btn btn-sm btn-outline-primary">Editar</a>
-            <form method="POST" onsubmit="return confirm('¿Eliminar la asignatura?')"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><button name="borrar_asignatura" class="btn btn-sm btn-outline-danger">✕</button></form>
+  <!-- ===== HERRAMIENTAS: tarjetas y asignaturas (plegables) ===== -->
+  <div class="row g-3 mb-3 align-items-start">
+    <div class="col-lg-6">
+      <details class="herr">
+        <summary>🪪 Tarjetas de acceso docentes <span class="chev">▼</span></summary>
+        <div class="herr-body">
+          <p class="text-muted small mb-2">Genera las tarjetas con el usuario y la clave de cada docente. Se abren en una pestaña nueva lista para imprimir.</p>
+          <form method="GET" action="maestros.php" target="_blank" class="d-flex flex-wrap gap-2">
+            <select name="tarjetas" class="form-select form-select-sm flex-grow-1" style="min-width:200px;width:auto" aria-label="Docente">
+              <option value="todos">Todos los docentes</option>
+              <?php foreach($m as $x): if($x['rol']!=='docente') continue; ?>
+              <option value="<?= (int)$x['id'] ?>"><?= h(trim($x['nombre'].' '.$x['apellido']) ?: $x['usuario']) ?> (@<?= h($x['usuario']) ?>)<?= $x['tiene_clave'] ? '' : ' — sin clave guardada' ?></option>
+              <?php endforeach; ?>
+            </select>
+            <button class="btn btn-sm btn-primary px-3">Generar tarjetas</button>
+          </form>
+          <?php $sinClaveN = count(array_filter($m, fn($x) => $x['rol']==='docente' && !$x['tiene_clave'])); if($sinClaveN): ?>
+          <small class="text-warning-emphasis d-block mt-2">⚠️ <?= $sinClaveN ?> docente(s) no tienen clave guardada: no saldrán en las tarjetas hasta que les asignes una nueva contraseña en la tabla.</small>
+          <?php endif; ?>
+        </div>
+      </details>
+    </div>
+
+    <div class="col-lg-6">
+      <details class="herr" id="panelAsig" <?= $abrirAsig ? 'open' : '' ?>>
+        <summary>📚 Asignaturas <span class="badge bg-light text-dark border"><?= count($asignaturas) ?></span> <span class="chev">▼</span></summary>
+        <div class="herr-body">
+          <form method="POST" class="d-flex gap-2 mb-2">
+            <input type="text" name="nombre_asignatura" class="form-control form-control-sm" required maxlength="100" placeholder="Ej: Lenguaje">
+            <button name="crear_asignatura" class="btn btn-sm btn-primary">Agregar</button>
+          </form>
+          <div class="lista-asig">
+          <?php foreach($asignaturas as $a): $aid = (int)$a['id']; ?>
+            <div class="item" id="asig-<?= $aid ?>" data-id="<?= $aid ?>">
+              <form method="POST" data-ajax class="e flex-grow-1 gap-1">
+                <input type="hidden" name="id" value="<?= $aid ?>">
+                <input type="text" name="nombre_asignatura" class="form-control form-control-sm" value="<?= h($a['nombre']) ?>" maxlength="100" required>
+                <button name="editar_asignatura" class="btn btn-sm btn-primary">Guardar</button>
+                <button type="button" class="btn btn-sm btn-light" data-accion="cancelar-asig">Cancelar</button>
+              </form>
+              <div class="v"><span class="nom-asig"><?= h($a['nombre']) ?></span> <small class="text-muted">(<?= (int)$a['tot'] ?> maestro<?= $a['tot']==1?'':'s' ?>)</small></div>
+              <div class="v d-flex gap-1">
+                <button type="button" class="btn btn-sm btn-outline-primary" data-accion="editar-asig">Editar</button>
+                <form method="POST" onsubmit="return confirm('¿Eliminar la asignatura?')"><input type="hidden" name="id" value="<?= $aid ?>"><button name="borrar_asignatura" class="btn btn-sm btn-outline-danger" aria-label="Eliminar asignatura">✕</button></form>
+              </div>
+            </div>
+          <?php endforeach; if(!$asignaturas) echo "<p class='text-muted small mb-0 pt-2'>Aún no hay asignaturas.</p>"; ?>
           </div>
         </div>
-        <?php endif; ?>
-      <?php endforeach; if(!$asignaturas) echo "<p class='text-muted small mb-0'>Aún no hay asignaturas.</p>"; ?>
-    </div></div>
+      </details>
+    </div>
   </div>
 
-  <div class="card p-4 shadow-sm mb-3">
-    <h4 class="text-primary mb-1">🪪 Tarjetas de acceso docentes</h4>
-    <p class="text-muted small mb-3">Genera las tarjetas con el usuario y la clave de cada docente (datos tomados de la tabla de maestros). Se abren en una pestaña nueva lista para imprimir.</p>
-    <form method="GET" action="maestros.php" target="_blank" class="row g-2 align-items-end">
-      <div class="col-md-8">
-        <label class="form-label small mb-1">Docente</label>
-        <select name="tarjetas" class="form-select">
-          <option value="todos">Todos los docentes</option>
-          <?php foreach($m as $x): if($x['rol']!=='docente') continue; ?>
-          <option value="<?= (int)$x['id'] ?>"><?= h(trim($x['nombre'].' '.$x['apellido']) ?: $x['usuario']) ?> (@<?= h($x['usuario']) ?>)<?= $x['tiene_clave'] ? '' : ' — sin clave guardada' ?></option>
-          <?php endforeach; ?>
+  <!-- ===== MAESTROS REGISTRADOS ===== -->
+  <div class="card shadow-sm mb-4">
+    <div class="d-flex flex-wrap align-items-center gap-2 px-3 py-2">
+      <h5 class="mb-0 text-primary">Maestros registrados</h5>
+      <span class="badge bg-light text-dark border" id="cuenta"><?= count($m) ?></span>
+      <div class="ms-auto d-flex flex-wrap gap-2">
+        <input type="search" id="filtroTexto" class="form-control form-control-sm" style="width:230px" placeholder="🔎 Buscar nombre, usuario o asignatura" aria-label="Buscar maestro">
+        <select id="filtroRol" class="form-select form-select-sm" style="width:auto" aria-label="Filtrar por rol">
+          <option value="">Todos los roles</option><option value="docente">Docentes</option><option value="admin">Administradores</option>
         </select>
       </div>
-      <div class="col-md-4"><button class="btn btn-primary w-100">Generar tarjetas</button></div>
-    </form>
-    <?php $sinClaveN = count(array_filter($m, fn($x) => $x['rol']==='docente' && !$x['tiene_clave'])); if($sinClaveN): ?>
-    <small class="text-warning-emphasis d-block mt-2">⚠️ <?= $sinClaveN ?> docente(s) no tienen clave guardada: no saldrán en las tarjetas hasta que les asignes una nueva contraseña en la tabla de abajo.</small>
-    <?php endif; ?>
-  </div>
+    </div>
 
-  <div class="card shadow-sm">
-    <div class="d-flex align-items-center gap-2 px-3 pt-3 pb-2">
-      <h5 class="mb-0 text-primary">Maestros registrados</h5>
-      <span class="badge bg-light text-dark border"><?= count($m) ?></span>
-    </div>
-    <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0 tabla-maestros">
-      <thead>
-        <tr>
-          <th>Nombre</th>
-          <th>Usuario</th>
-          <th>Rol</th>
-          <th>Asignatura</th>
-          <th>Nueva contraseña</th>
-          <th class="text-end">Acciones</th>
-        </tr>
-      </thead>
-      <tbody>
-      <?php foreach($m as $x): $mid = (int)$x['id']; ?>
-        <?php if($ed==$mid): ?>
-        <tr class="fila-edicion">
-          <td>
-            <form id="fe-<?= $mid ?>" method="POST"><input type="hidden" name="id" value="<?= $mid ?>"></form>
-            <div class="d-flex gap-1">
-              <input form="fe-<?= $mid ?>" name="nombre" class="form-control form-control-sm" style="min-width:110px" value="<?= h($x['nombre']) ?>" placeholder="Nombre" maxlength="100" required>
-              <input form="fe-<?= $mid ?>" name="apellido" class="form-control form-control-sm" style="min-width:110px" value="<?= h($x['apellido']) ?>" placeholder="Apellido" maxlength="100" required>
-            </div>
-          </td>
-          <td class="text-muted">@<?= h($x['usuario']) ?></td>
-          <td><span class="badge <?= $x['rol']=='admin'?'bg-dark':'bg-primary' ?>"><?= $x['rol']=='admin'?'Administrador':'Docente' ?></span></td>
-          <td>
-            <select form="fe-<?= $mid ?>" name="asignatura_id" class="form-select form-select-sm" style="min-width:150px">
-              <option value="">Sin asignatura</option>
-              <?php foreach($asignaturas as $a): ?><option value="<?= (int)$a['id'] ?>" <?= $a['id']==$x['asignatura_id']?'selected':'' ?>><?= h($a['nombre']) ?></option><?php endforeach; ?>
-            </select>
-          </td>
-          <td class="text-muted small">—</td>
-          <td class="text-end text-nowrap">
-            <button form="fe-<?= $mid ?>" name="editar_maestro" class="btn btn-sm btn-primary">Guardar</button>
-            <a href="maestros.php" class="btn btn-sm btn-light">Cancelar</a>
-          </td>
-        </tr>
-        <?php else: ?>
-        <tr>
-          <td class="fw-semibold"><?= h(trim($x['nombre'].' '.$x['apellido']) ?: $x['usuario']) ?></td>
-          <td class="text-muted">@<?= h($x['usuario']) ?></td>
-          <td><span class="badge <?= $x['rol']=='admin'?'bg-dark':'bg-primary' ?>"><?= $x['rol']=='admin'?'Administrador':'Docente' ?></span></td>
-          <td>
-            <?php if($x['asignatura']): ?><span class="badge bg-primary-subtle text-primary"><?= h($x['asignatura']) ?></span>
-            <?php else: ?><span class="badge bg-warning-subtle text-warning-emphasis">Sin asignatura</span><?php endif; ?>
-          </td>
-          <td>
-            <form method="POST" class="d-flex gap-1" style="min-width:240px">
-              <input type="hidden" name="id" value="<?= $mid ?>">
-              <input type="password" name="password" class="form-control form-control-sm" placeholder="Nueva clave (mín. 6)" autocomplete="new-password" minlength="6" required>
-              <button name="clave" class="btn btn-sm btn-outline-primary">Cambiar</button>
-            </form>
-          </td>
-          <td class="text-end text-nowrap">
-            <?php if($x['rol']==='docente'): ?>
-              <?php if($x['tiene_clave']): ?><a href="?tarjetas=<?= $mid ?>" target="_blank" class="btn btn-sm btn-outline-success" title="Generar tarjeta de acceso">🪪</a>
-              <?php else: ?><span class="d-inline-block" title="Sin clave guardada: asigna una nueva contraseña"><button class="btn btn-sm btn-outline-secondary" disabled>🪪</button></span><?php endif; ?>
-            <?php endif; ?>
-            <a href="?editar=<?= $mid ?>" class="btn btn-sm btn-outline-primary">Editar</a>
-            <form method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar este maestro? Sus opciones de canje se borran; el histórico y las metas se conservan.')"><input type="hidden" name="id" value="<?= $mid ?>"><button name="borrar" class="btn btn-sm btn-outline-danger">✕</button></form>
-          </td>
-        </tr>
-        <?php endif; ?>
-      <?php endforeach; ?>
-      </tbody>
-    </table>
+    <div class="wrap-tabla">
+      <div class="tabla-scroll" id="tablaScroll" tabindex="0">
+        <table class="table align-middle mb-0 tabla-maestros">
+          <thead>
+            <tr>
+              <th class="col-nombre">Nombre</th>
+              <th>Usuario</th>
+              <th>Rol</th>
+              <th>Asignatura</th>
+              <th>Nueva contraseña</th>
+              <th class="text-end">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="cuerpo">
+          <?php foreach($m as $x): $mid = (int)$x['id'];
+            $nomCompleto = trim($x['nombre'].' '.$x['apellido']) ?: $x['usuario'];
+            $buscar = mb_strtolower($nomCompleto.' '.$x['usuario'].' '.($x['asignatura'] ?? ''), 'UTF-8'); ?>
+          <tr id="m-<?= $mid ?>" data-id="<?= $mid ?>" data-rol="<?= h($x['rol']) ?>" data-buscar="<?= h($buscar) ?>" class="<?= $mid===$nuevoId ? 'fila-nueva' : '' ?>">
+            <td class="col-nombre">
+              <form id="fe-<?= $mid ?>" method="POST" data-ajax class="d-none"><input type="hidden" name="id" value="<?= $mid ?>"></form>
+              <span class="v fw-semibold nom-completo"><?= h($nomCompleto) ?></span>
+              <div class="e gap-1">
+                <input form="fe-<?= $mid ?>" name="nombre" class="form-control form-control-sm" style="min-width:110px" value="<?= h($x['nombre']) ?>" placeholder="Nombre" maxlength="100" required>
+                <input form="fe-<?= $mid ?>" name="apellido" class="form-control form-control-sm" style="min-width:110px" value="<?= h($x['apellido']) ?>" placeholder="Apellido" maxlength="100" required>
+              </div>
+            </td>
+            <td class="text-muted">@<?= h($x['usuario']) ?></td>
+            <td><span class="badge <?= $x['rol']=='admin'?'bg-dark':'bg-primary' ?>"><?= $x['rol']=='admin'?'Administrador':'Docente' ?></span></td>
+            <td>
+              <span class="v celda-asig">
+                <?php if($x['asignatura']): ?><span class="badge bg-primary-subtle text-primary" data-asig-badge="<?= (int)$x['asignatura_id'] ?>"><?= h($x['asignatura']) ?></span>
+                <?php else: ?><span class="badge bg-warning-subtle text-warning-emphasis">Sin asignatura</span><?php endif; ?>
+              </span>
+              <select form="fe-<?= $mid ?>" name="asignatura_id" class="e form-select form-select-sm sel-asig" style="min-width:150px">
+                <option value="">Sin asignatura</option>
+                <?php foreach($asignaturas as $a): ?><option value="<?= (int)$a['id'] ?>" <?= $a['id']==$x['asignatura_id']?'selected':'' ?>><?= h($a['nombre']) ?></option><?php endforeach; ?>
+              </select>
+            </td>
+            <td>
+              <form method="POST" data-ajax class="d-flex gap-1" style="min-width:240px">
+                <input type="hidden" name="id" value="<?= $mid ?>">
+                <input type="password" name="password" class="form-control form-control-sm" placeholder="Nueva clave (mín. 6)" autocomplete="new-password" minlength="6" required>
+                <button name="clave" class="btn btn-sm btn-outline-primary">Cambiar</button>
+              </form>
+            </td>
+            <td class="text-end text-nowrap">
+              <span class="v">
+                <?php if($x['rol']==='docente'): ?>
+                  <a href="?tarjetas=<?= $mid ?>" target="_blank" class="btn btn-sm btn-outline-success btn-tarjeta <?= $x['tiene_clave'] ? '' : 'd-none' ?>" title="Generar tarjeta de acceso">🪪</a>
+                  <span class="d-inline-block btn-tarjeta-off <?= $x['tiene_clave'] ? 'd-none' : '' ?>" title="Sin clave guardada: asigna una nueva contraseña"><button type="button" class="btn btn-sm btn-outline-secondary" disabled>🪪</button></span>
+                <?php endif; ?>
+                <button type="button" class="btn btn-sm btn-outline-primary" data-accion="editar">Editar</button>
+                <form method="POST" data-ajax class="d-inline" data-confirmar="¿Eliminar este maestro? Sus opciones de canje se borran; el histórico y las metas se conservan."><input type="hidden" name="id" value="<?= $mid ?>"><button name="borrar" class="btn btn-sm btn-outline-danger" aria-label="Eliminar maestro">✕</button></form>
+              </span>
+              <span class="e gap-1 justify-content-end">
+                <button type="submit" form="fe-<?= $mid ?>" name="editar_maestro" class="btn btn-sm btn-primary">Guardar</button>
+                <button type="button" class="btn btn-sm btn-light" data-accion="cancelar">Cancelar</button>
+              </span>
+            </td>
+          </tr>
+          <?php endforeach; ?>
+          </tbody>
+        </table>
+        <div class="sin-resultados" id="sinResultados">Ningún maestro coincide con la búsqueda.</div>
+      </div>
+      <button type="button" id="btnArribaTabla" aria-label="Volver arriba">⬆️ Volver arriba</button>
     </div>
   </div>
-</div><?php include 'footer.php'; ?>
+</div>
+
+<script>
+(function(){
+  const cont   = document.getElementById('tablaScroll');
+  const cuerpo = document.getElementById('cuerpo');
+  const btnTop = document.getElementById('btnArribaTabla');
+  const txt    = document.getElementById('filtroTexto');
+  const selRol = document.getElementById('filtroRol');
+  const cuenta = document.getElementById('cuenta');
+  const vacio  = document.getElementById('sinResultados');
+  const sinTilde = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+
+  /* ---------- Avisos flotantes ---------- */
+  function aviso(msg, ok){
+    const d = document.createElement('div');
+    d.className = 'toast-msg ' + (ok ? 'ok' : 'err'); d.textContent = msg;
+    document.getElementById('toasts').appendChild(d);
+    setTimeout(() => d.remove(), ok ? 2800 : 5000);
+  }
+
+  /* ---------- Mostrar una fila y resaltarla dentro de la tabla ---------- */
+  function resaltar(tr, centrar){
+    if (centrar) {
+      const r = tr.getBoundingClientRect(), c = cont.getBoundingClientRect();
+      cont.scrollTo({top: cont.scrollTop + (r.top - c.top) - c.height/2 + r.height/2});
+    }
+    tr.classList.remove('flash'); void tr.offsetWidth; tr.classList.add('flash');
+  }
+
+  /* ---------- Filtros ---------- */
+  function filtrar(){
+    const q = sinTilde(txt.value.trim()), rol = selRol.value; let vis = 0;
+    cuerpo.querySelectorAll('tr').forEach(tr => {
+      const ok = (!rol || tr.dataset.rol === rol) && (!q || sinTilde(tr.dataset.buscar).includes(q));
+      tr.classList.toggle('oculta', !ok); if (ok) vis++;
+    });
+    const total = cuerpo.querySelectorAll('tr').length;
+    cuenta.textContent = (vis === total) ? total : (vis + ' de ' + total);
+    vacio.style.display = vis ? 'none' : 'block';
+  }
+  txt.addEventListener('input', filtrar); selRol.addEventListener('change', filtrar);
+
+  /* ---------- Volver arriba (lista de maestros) ---------- */
+  cont.addEventListener('scroll', () => btnTop.classList.toggle('visible', cont.scrollTop > 150), {passive:true});
+  btnTop.addEventListener('click', () => cont.scrollTo({top:0}));
+
+  /* ---------- Edición en el lugar ---------- */
+  function entrarEdicion(tr){
+    tr.classList.add('editando');
+    const i = tr.querySelector('input[name=nombre]'); if (i) { i.focus(); i.select(); }
+  }
+  function salirEdicion(tr){ tr.classList.remove('editando'); }
+
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-accion]'); if (!b) return;
+    const a = b.dataset.accion, tr = b.closest('tr'), it = b.closest('.item');
+    if (a === 'editar')   entrarEdicion(tr);
+    if (a === 'cancelar') { document.getElementById('fe-' + tr.dataset.id).reset(); salirEdicion(tr); }
+    if (a === 'editar-asig')   { it.classList.add('editando'); const i = it.querySelector('input[name=nombre_asignatura]'); i.focus(); i.select(); }
+    if (a === 'cancelar-asig') { it.querySelector('form').reset(); it.classList.remove('editando'); }
+  });
+  // Esc cancela la edición; Enter ya guarda (envía el formulario)
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    const tr = e.target.closest && e.target.closest('tr.editando');
+    if (tr) { document.getElementById('fe-' + tr.dataset.id).reset(); salirEdicion(tr); return; }
+    const it = e.target.closest && e.target.closest('.item.editando');
+    if (it) { it.querySelector('form').reset(); it.classList.remove('editando'); }
+  });
+
+  /* ---------- Envío por fetch (sin recargar la página) ---------- */
+  document.addEventListener('submit', async e => {
+    const f = e.target; if (!f.matches('form[data-ajax]')) return;
+    e.preventDefault();
+    if (f.dataset.confirmar && !confirm(f.dataset.confirmar)) return;
+
+    const fd = new FormData(f);
+    if (e.submitter && e.submitter.name) fd.append(e.submitter.name, '1');
+    // Los campos del formulario de edición viven en otras celdas (atributo form=)
+    const accion = ['editar_maestro','clave','borrar','editar_asignatura'].find(k => fd.has(k));
+    const btns = [...document.querySelectorAll('button[form="' + f.id + '"]'), ...f.querySelectorAll('button')];
+    btns.forEach(b => b.disabled = true);
+    try {
+      const r = await fetch('maestros.php', {method:'POST', body:fd, headers:{'X-Requested-With':'fetch'}});
+      const d = await r.json();
+      if (!d.ok) { aviso(d.error || 'No se pudo completar la operación.', false); return; }
+      const tr = f.closest('tr') || document.getElementById('m-' + fd.get('id'));
+
+      if (accion === 'editar_maestro' && d.maestro) {
+        const mm = d.maestro, nom = ((mm.nombre + ' ' + mm.apellido).trim()) || mm.usuario;
+        tr.querySelector('.nom-completo').textContent = nom;
+        const celda = tr.querySelector('.celda-asig');
+        celda.innerHTML = '';
+        const sp = document.createElement('span');
+        if (mm.asignatura) { sp.className = 'badge bg-primary-subtle text-primary'; sp.dataset.asigBadge = mm.asignatura_id; sp.textContent = mm.asignatura; }
+        else { sp.className = 'badge bg-warning-subtle text-warning-emphasis'; sp.textContent = 'Sin asignatura'; }
+        celda.appendChild(sp);
+        // lo recién guardado pasa a ser el valor "original" (para que Cancelar no lo revierta)
+        tr.querySelectorAll('input[name=nombre],input[name=apellido]').forEach(i => i.defaultValue = i.value);
+        tr.querySelectorAll('select[name=asignatura_id] option').forEach(o => o.defaultSelected = o.selected);
+        tr.dataset.buscar = (nom + ' ' + mm.usuario + ' ' + (mm.asignatura || '')).toLowerCase();
+        salirEdicion(tr); filtrar(); resaltar(tr, false);
+        aviso(d.mensaje, true);
+      }
+      else if (accion === 'clave') {
+        f.reset();
+        if (d.tiene_clave) { tr.querySelector('.btn-tarjeta')?.classList.remove('d-none'); tr.querySelector('.btn-tarjeta-off')?.classList.add('d-none'); }
+        resaltar(tr, false); aviso(d.mensaje, true);
+      }
+      else if (accion === 'borrar') {
+        tr.remove(); filtrar(); aviso(d.mensaje, true);
+      }
+      else if (accion === 'editar_asignatura') {
+        const it = f.closest('.item'), id = it.dataset.id, nombre = fd.get('nombre_asignatura').trim();
+        it.querySelector('.nom-asig').textContent = nombre;
+        f.querySelector('input[name=nombre_asignatura]').defaultValue = nombre;
+        it.classList.remove('editando');
+        document.querySelectorAll('select.sel-asig option[value="' + id + '"]').forEach(o => o.textContent = nombre);
+        document.querySelectorAll('[data-asig-badge="' + id + '"]').forEach(b => b.textContent = nombre);
+        cuerpo.querySelectorAll('tr').forEach(t => { if (t.querySelector('[data-asig-badge="' + id + '"]')) {
+          const nm = t.querySelector('.nom-completo').textContent, us = t.children[1].textContent.replace('@','');
+          t.dataset.buscar = (nm + ' ' + us + ' ' + nombre).toLowerCase(); } });
+        aviso(d.mensaje, true);
+      }
+    } catch (err) {
+      aviso('Error de conexión. Intenta nuevamente.', false);
+    } finally {
+      btns.forEach(b => { b.disabled = false; });
+    }
+  });
+
+  /* ---------- Si se acaba de crear un maestro: llevarlo a la vista y resaltarlo ---------- */
+  const nuevo = cuerpo.querySelector('tr.fila-nueva');
+  if (nuevo) setTimeout(() => resaltar(nuevo, true), 150);
+})();
+</script>
+<?php include 'footer.php'; ?>
 </body></html>
