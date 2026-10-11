@@ -21,6 +21,12 @@ if (isset($_GET['tarjetas'])) {
   $sel = $_GET['tarjetas'];
   $sql = "SELECT id, nombre, apellido, usuario, clave_texto FROM maestros WHERE rol='docente'";
   if ($sel === 'todos') { $s = $conn->prepare($sql." ORDER BY apellido, nombre, usuario"); }
+  elseif ($sel === 'sel') {   // varios docentes marcados con checkbox: ?tarjetas=sel&ids[]=1&ids[]=2...
+    $ids = array_values(array_unique(array_filter(array_map('intval', (array)($_GET['ids'] ?? [])), fn($i) => $i > 0)));
+    if (!$ids) $ids = [0];
+    $s = $conn->prepare($sql." AND id IN (".implode(',', array_fill(0, count($ids), '?')).") ORDER BY apellido, nombre, usuario");
+    $s->bind_param(str_repeat('i', count($ids)), ...$ids);
+  }
   else { $sid = (int)$sel; $s = $conn->prepare($sql." AND id=?"); $s->bind_param("i", $sid); }
   $s->execute();
   $docs = $s->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -258,6 +264,11 @@ $m = $conn->query("SELECT m.id, m.nombre, m.apellido, m.usuario, m.rol, m.asigna
   details.herr>summary .chev{margin-left:auto;transition:transform .15s;font-size:.8rem;opacity:.7}
   details.herr[open]>summary .chev{transform:rotate(180deg)}
   details.herr .herr-body{padding:0 1rem 1rem}
+  .lista-tarjetas{max-height:240px;overflow-y:auto;border:1px solid var(--forest-line);border-radius:10px;padding:.25rem .5rem}
+  .item-tarjeta{display:flex;align-items:center;gap:.5rem;padding:.3rem .25rem;border-bottom:1px solid #eef3e9;cursor:pointer;margin:0;font-size:.9rem}
+  .item-tarjeta:last-child{border-bottom:0}
+  .item-tarjeta:hover{background:#f5f9f2}
+  .item-tarjeta input:disabled~*{opacity:.6}
   .lista-asig{max-height:260px;overflow-y:auto;border-top:1px solid var(--forest-line)}
   .lista-asig .item{display:flex;justify-content:space-between;align-items:center;gap:.5rem;padding:.35rem 0;border-bottom:1px solid #eef3e9}
   .lista-asig .item:last-child{border-bottom:0}
@@ -333,17 +344,28 @@ $m = $conn->query("SELECT m.id, m.nombre, m.apellido, m.usuario, m.rol, m.asigna
         <summary>🪪 Tarjetas de acceso docentes <span class="chev">▼</span></summary>
         <div class="herr-body">
           <p class="text-muted small mb-2">Genera las tarjetas con el usuario y la clave de cada docente. Se abren en una pestaña nueva lista para imprimir.</p>
-          <form method="GET" action="maestros.php" target="_blank" class="d-flex flex-wrap gap-2">
-            <select name="tarjetas" class="form-select form-select-sm flex-grow-1" style="min-width:200px;width:auto" aria-label="Docente">
-              <option value="todos">Todos los docentes</option>
-              <?php foreach($m as $x): if($x['rol']!=='docente') continue; ?>
-              <option value="<?= (int)$x['id'] ?>"><?= h(trim($x['nombre'].' '.$x['apellido']) ?: $x['usuario']) ?> (@<?= h($x['usuario']) ?>)<?= $x['tiene_clave'] ? '' : ' — sin clave guardada' ?></option>
+          <form method="GET" action="maestros.php" target="_blank" id="formTarjetas">
+            <input type="hidden" name="tarjetas" value="sel">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+              <div class="form-check mb-0">
+                <input class="form-check-input" type="checkbox" id="selTodos" checked>
+                <label class="form-check-label fw-semibold small" for="selTodos">Seleccionar todos</label>
+              </div>
+              <small class="text-muted ms-auto" id="contSel"></small>
+            </div>
+            <div class="lista-tarjetas" id="listaTarjetas">
+              <?php foreach($m as $x): if($x['rol']!=='docente') continue; $xid=(int)$x['id']; $nomX = trim($x['nombre'].' '.$x['apellido']) ?: $x['usuario']; ?>
+              <label class="item-tarjeta" id="tj-<?= $xid ?>" for="tjc-<?= $xid ?>">
+                <input class="form-check-input" type="checkbox" name="ids[]" value="<?= $xid ?>" id="tjc-<?= $xid ?>" <?= $x['tiene_clave'] ? 'checked' : 'disabled' ?>>
+                <span class="nom-tj"><?= h($nomX) ?></span> <small class="text-muted">(@<?= h($x['usuario']) ?>)</small>
+                <small class="text-warning-emphasis aviso-sc <?= $x['tiene_clave'] ? 'd-none' : '' ?>">— sin clave guardada</small>
+              </label>
               <?php endforeach; ?>
-            </select>
-            <button class="btn btn-sm btn-primary px-3">Generar tarjetas</button>
+            </div>
+            <button class="btn btn-sm btn-primary px-3 mt-2" id="btnGenTarjetas">Generar tarjetas</button>
           </form>
           <?php $sinClaveN = count(array_filter($m, fn($x) => $x['rol']==='docente' && !$x['tiene_clave'])); if($sinClaveN): ?>
-          <small class="text-warning-emphasis d-block mt-2">⚠️ <?= $sinClaveN ?> docente(s) no tienen clave guardada: no saldrán en las tarjetas hasta que les asignes una nueva contraseña en la tabla.</small>
+          <small class="text-warning-emphasis d-block mt-2">⚠️ <?= $sinClaveN ?> docente(s) no tienen clave guardada: no se pueden seleccionar hasta que les asignes una nueva contraseña en la tabla.</small>
           <?php endif; ?>
         </div>
       </details>
@@ -562,16 +584,17 @@ $m = $conn->query("SELECT m.id, m.nombre, m.apellido, m.usuario, m.rol, m.asigna
         tr.querySelectorAll('input[name=nombre],input[name=apellido]').forEach(i => i.defaultValue = i.value);
         tr.querySelectorAll('select[name=asignatura_id] option').forEach(o => o.defaultSelected = o.selected);
         tr.dataset.buscar = (nom + ' ' + mm.usuario + ' ' + (mm.asignatura || '')).toLowerCase();
+        window.tjSync.nombre(tr.dataset.id, nom);
         salirEdicion(tr); filtrar(); resaltar(tr, false);
         aviso(d.mensaje, true);
       }
       else if (accion === 'clave') {
         f.reset();
-        if (d.tiene_clave) { tr.querySelector('.btn-tarjeta')?.classList.remove('d-none'); tr.querySelector('.btn-tarjeta-off')?.classList.add('d-none'); }
+        if (d.tiene_clave) { window.tjSync.clave(tr.dataset.id); tr.querySelector('.btn-tarjeta')?.classList.remove('d-none'); tr.querySelector('.btn-tarjeta-off')?.classList.add('d-none'); }
         resaltar(tr, false); aviso(d.mensaje, true);
       }
       else if (accion === 'borrar') {
-        tr.remove(); filtrar(); aviso(d.mensaje, true);
+        window.tjSync.quitar(tr.dataset.id); tr.remove(); filtrar(); aviso(d.mensaje, true);
       }
       else if (accion === 'editar_asignatura') {
         const it = f.closest('.item'), id = it.dataset.id, nombre = fd.get('nombre_asignatura').trim();
@@ -591,6 +614,28 @@ $m = $conn->query("SELECT m.id, m.nombre, m.apellido, m.usuario, m.rol, m.asigna
       btns.forEach(b => { b.disabled = false; });
     }
   });
+
+  /* ---------- Selección de tarjetas ---------- */
+  const lt = document.getElementById('listaTarjetas'), selTodos = document.getElementById('selTodos');
+  const contSel = document.getElementById('contSel'), btnGen = document.getElementById('btnGenTarjetas');
+  const checks = () => [...lt.querySelectorAll('input[name="ids[]"]:not(:disabled)')];
+  function actualizarSel(){
+    const c = checks(), n = c.filter(i => i.checked).length;
+    contSel.textContent = n + ' de ' + c.length + ' seleccionados';
+    selTodos.checked = c.length > 0 && n === c.length;
+    selTodos.indeterminate = n > 0 && n < c.length;
+    btnGen.disabled = n === 0;
+  }
+  selTodos.addEventListener('change', () => { checks().forEach(i => i.checked = selTodos.checked); actualizarSel(); });
+  lt.addEventListener('change', actualizarSel);
+  actualizarSel();
+  // Mantener la lista al día cuando se edita la tabla (sin recargar)
+  window.tjSync = {
+    clave(id){ const i = document.getElementById('tjc-' + id); if (!i) return; i.disabled = false; if (i.dataset.tocado !== '1') i.checked = true;
+      document.querySelector('#tj-' + id + ' .aviso-sc')?.classList.add('d-none'); actualizarSel(); },
+    nombre(id, n){ const e = document.querySelector('#tj-' + id + ' .nom-tj'); if (e) e.textContent = n; },
+    quitar(id){ document.getElementById('tj-' + id)?.remove(); actualizarSel(); }
+  };
 
   /* ---------- Si se acaba de crear un maestro: llevarlo a la vista y resaltarlo ---------- */
   const nuevo = cuerpo.querySelector('tr.fila-nueva');
