@@ -19,7 +19,7 @@ $permitidas = [
   'reporte.php','nfc.php','canje.php','historico.php','contenido.php','maestros.php',
   'tarjetas.php','tarjetas_imprimir.php','carga_masiva.php','plantilla_alumnos.php',
   'qr.php','buscar_alumno.php','instalar.php','salir.php','reporte_apoderado.php','metas.php',
-  'log_sesiones.php'
+  'log_sesiones.php','feria.php','ferias.php'
 ];
 
 if (in_array($pagina, $permitidas, true)) {

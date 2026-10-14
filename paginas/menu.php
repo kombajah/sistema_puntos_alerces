@@ -6,12 +6,13 @@ function lkm($f,$t,$a){ return "<a href='$f' class='menu-mas-item ".($a==$f?'act
 // Opciones que viven dentro del menú hamburguesa
 $secundarios = [
   'canje.php'        => '🎁 Canje',
+  'feria.php'        => '🎪 Feria del canje',
   'metas.php'        => '🎯 Metas',
   'historico.php'    => '🕘 Histórico',
   'tarjetas.php'     => '🪪 Tarjetas',
   'carga_masiva.php' => '📥 Carga masiva',
 ];
-if (es_admin()) { $secundarios['maestros.php'] = '🔑 Maestros'; $secundarios['log_sesiones.php'] = '🔐 Inicios de sesión'; }
+if (es_admin()) { $secundarios['ferias.php'] = '⚙️ Administrar ferias'; $secundarios['maestros.php'] = '🔑 Maestros'; $secundarios['log_sesiones.php'] = '🔐 Inicios de sesión'; }
 $enMas = isset($secundarios[$act]);
 ?>
 <style>

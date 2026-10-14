@@ -1,5 +1,6 @@
 <?php
 require_once 'conexion.php'; requiere_login();
+require_once 'feria_lib.php'; feria_asegurar($conn); // garantiza las columnas canjes.feria_id/feria_producto_id que usa la consulta de abajo
 $cursos = $conn->query("SELECT id, nombre FROM cursos ORDER BY nombre")->fetch_all(MYSQLI_ASSOC);
 $asignaturas = $conn->query("SELECT id, nombre FROM asignaturas ORDER BY nombre")->fetch_all(MYSQLI_ASSOC);
 
@@ -21,9 +22,10 @@ $sql = "SELECT m.*, a.nombre alumno, c.nombre curso, ag.nombre asignatura, ".sql
    UNION ALL
    SELECT 'canje', x.id, x.alumno_id, x.fecha, -x.puntos_virtuales,
      CONCAT(
-       CASE WHEN x.opcion_id IS NOT NULL THEN CONCAT('Canje por: ', COALESCE(x.nombre_opcion,'ítem eliminado'))
+       CASE WHEN x.feria_id IS NOT NULL THEN CONCAT('Feria: ', COALESCE(x.nombre_opcion,'premio'))
+            WHEN x.opcion_id IS NOT NULL THEN CONCAT('Canje por: ', COALESCE(x.nombre_opcion,'ítem eliminado'))
             ELSE CONCAT('Canje por ', x.puntos_base, ' pt base') END,
-       IF(x.observacion<>'', CONCAT(': ', x.observacion), '')
+       IF(x.observacion<>'', CONCAT(IF(x.feria_id IS NOT NULL, ' · ', ': '), x.observacion), '')
      )
      , x.maestro_id, x.asignatura_id, 0
      FROM canjes x) m
