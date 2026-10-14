@@ -24,7 +24,7 @@ if (!function_exists('csrf_validar')) {
 }
 
 // Versión del esquema de ferias: súbela si en el futuro se agregan columnas/tablas nuevas.
-const FERIA_SCHEMA_VERSION = 'v1';
+const FERIA_SCHEMA_VERSION = 'v2';
 
 function feria_asegurar($conn){
   iniciar_sesion();
@@ -44,12 +44,18 @@ function feria_asegurar($conn){
     costo_puntos INT NOT NULL,
     stock INT NULL,
     activo TINYINT(1) NOT NULL DEFAULT 1,
+    curso_id INT NULL,
     FOREIGN KEY (feria_id) REFERENCES ferias(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-  foreach (['feria_id' => 'INT NULL', 'feria_producto_id' => 'INT NULL', 'ticket' => 'VARCHAR(16) NULL'] as $col => $def) {
-    $q = $conn->prepare("SELECT COUNT(*) t FROM information_schema.COLUMNS WHERE table_schema=DATABASE() AND table_name='canjes' AND column_name=?");
-    $q->bind_param("s", $col); $q->execute();
-    if (!(int)$q->get_result()->fetch_assoc()['t']) $conn->query("ALTER TABLE canjes ADD COLUMN $col $def");
+  // Columnas agregadas a tablas que ya existían (se crean solo si faltan).
+  $cols = [
+    ['canjes', 'feria_id', 'INT NULL'], ['canjes', 'feria_producto_id', 'INT NULL'], ['canjes', 'ticket', 'VARCHAR(16) NULL'],
+    ['feria_productos', 'curso_id', 'INT NULL'],   // NULL = producto para todos los cursos
+  ];
+  foreach ($cols as [$tabla, $col, $def]) {
+    $q = $conn->prepare("SELECT COUNT(*) t FROM information_schema.COLUMNS WHERE table_schema=DATABASE() AND table_name=? AND column_name=?");
+    $q->bind_param("ss", $tabla, $col); $q->execute();
+    if (!(int)$q->get_result()->fetch_assoc()['t']) $conn->query("ALTER TABLE $tabla ADD COLUMN $col $def");
   }
   $_SESSION['feria_schema'] = FERIA_SCHEMA_VERSION;
 }
@@ -60,12 +66,14 @@ function feria_abiertas($conn){
 
 // Productos de una feria con unidades usadas y disponibles (disp = null cuando no hay límite de stock).
 function feria_productos($conn, $feriaId, $soloActivos = false){
-  $sql = "SELECT p.id, p.nombre, p.costo_puntos costo, p.stock, p.activo,
+  $sql = "SELECT p.id, p.nombre, p.costo_puntos costo, p.stock, p.activo, p.curso_id, cu.nombre curso,
           (SELECT COUNT(*) FROM canjes c WHERE c.feria_producto_id=p.id) usados
-          FROM feria_productos p WHERE p.feria_id=?" . ($soloActivos ? " AND p.activo=1" : "") . " ORDER BY p.costo_puntos, p.nombre";
+          FROM feria_productos p LEFT JOIN cursos cu ON cu.id=p.curso_id
+          WHERE p.feria_id=?" . ($soloActivos ? " AND p.activo=1" : "") . " ORDER BY (p.curso_id IS NOT NULL), cu.nombre, p.costo_puntos, p.nombre";
   $s = $conn->prepare($sql); $s->bind_param("i", $feriaId); $s->execute();
   $r = $s->get_result()->fetch_all(MYSQLI_ASSOC);
   foreach ($r as &$p) {
+    $p['curso_id'] = $p['curso_id'] === null ? null : (int)$p['curso_id'];
     $p['id'] = (int)$p['id']; $p['costo'] = (int)$p['costo']; $p['usados'] = (int)$p['usados']; $p['activo'] = (int)$p['activo'];
     $p['stock'] = $p['stock'] === null ? null : (int)$p['stock'];
     $p['disp'] = $p['stock'] === null ? null : max(0, $p['stock'] - $p['usados']);
@@ -95,12 +103,13 @@ function feria_canjear($conn, $feriaId, $alumnoId, array $items){
     $s = $conn->prepare("SELECT id, nombre, estado FROM ferias WHERE id=? FOR UPDATE"); $s->bind_param("i", $feriaId); $s->execute();
     $f = $s->get_result()->fetch_assoc();
     if (!$f || $f['estado'] !== 'abierta') { $conn->rollback(); return [false, 'Esa feria está cerrada o ya no existe.', null]; }
-    $s = $conn->prepare("SELECT id FROM alumnos WHERE id=? FOR UPDATE"); $s->bind_param("i", $alumnoId); $s->execute();
-    if (!$s->get_result()->fetch_assoc()) { $conn->rollback(); return [false, 'Alumno no válido.', null]; }
+    $s = $conn->prepare("SELECT id, curso_id FROM alumnos WHERE id=? FOR UPDATE"); $s->bind_param("i", $alumnoId); $s->execute();
+    $alu = $s->get_result()->fetch_assoc();
+    if (!$alu) { $conn->rollback(); return [false, 'Alumno no válido.', null]; }
 
     $ids = array_keys($it);
     $in = implode(',', array_fill(0, count($ids), '?'));
-    $s = $conn->prepare("SELECT p.id, p.nombre, p.costo_puntos, p.stock, p.activo,
+    $s = $conn->prepare("SELECT p.id, p.nombre, p.costo_puntos, p.stock, p.activo, p.curso_id,
                          (SELECT COUNT(*) FROM canjes c WHERE c.feria_producto_id=p.id) usados
                          FROM feria_productos p WHERE p.feria_id=? AND p.id IN ($in) FOR UPDATE");
     $params = array_merge([$feriaId], $ids);
@@ -112,6 +121,7 @@ function feria_canjear($conn, $feriaId, $alumnoId, array $items){
     foreach ($it as $pid => $q) {
       $p = $prods[$pid] ?? null;
       if (!$p || !$p['activo']) { $conn->rollback(); return [false, 'Un premio ya no está disponible en esta feria.', null]; }
+      if ($p['curso_id'] !== null && (int)$p['curso_id'] !== (int)$alu['curso_id']) { $conn->rollback(); return [false, '«' . $p['nombre'] . '» no está disponible para el curso de este alumno.', null]; }
       if ($p['stock'] !== null && (int)$p['usados'] + $q > (int)$p['stock']) { $conn->rollback(); return [false, 'No queda stock suficiente de «' . $p['nombre'] . '».', null]; }
       $total += (int)$p['costo_puntos'] * $q;
       $nombres[] = $p['nombre'] . ($q > 1 ? ' ×' . $q : '');

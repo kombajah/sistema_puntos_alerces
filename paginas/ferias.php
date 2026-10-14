@@ -7,6 +7,17 @@ require_once 'feria_lib.php';
 feria_asegurar($conn);
 
 function fechaOk($d){ return preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) && checkdate((int)substr($d, 5, 2), (int)substr($d, 8, 2), (int)substr($d, 0, 4)); }
+// Devuelve el id del curso si existe, o null (= producto para todos los cursos).
+function cursoOk($conn, $v){
+  $id = (int)$v; if ($id <= 0) return null;
+  $q = $conn->prepare("SELECT id FROM cursos WHERE id=?"); $q->bind_param("i", $id); $q->execute();
+  return $q->get_result()->fetch_assoc() ? $id : null;
+}
+function opcionesCursos($cursos, $sel = null){
+  $o = '<option value="">Todos los cursos</option>';
+  foreach ($cursos as $c) $o .= '<option value="' . (int)$c['id'] . '"' . ((int)$c['id'] === (int)$sel ? ' selected' : '') . '>' . h($c['nombre']) . '</option>';
+  return $o;
+}
 function volver($id, $tipo, $msg){ $_SESSION['flash_feria'] = [$tipo, $msg]; header('Location: ferias.php' . ($id ? '?feria=' . (int)$id : '')); exit; }
 
 // ---------------------------- Descarga de los canjes de una feria (Excel .xlsx; CSV si el servidor no tiene ZipArchive) ----------------------------
@@ -84,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $s->bind_param("sssi", $nom, $fv, $ahora, $uid); $s->execute();
     $nuevo = (int)$conn->insert_id;
     if ($copiar) {
-      $s = $conn->prepare("INSERT INTO feria_productos (feria_id, nombre, costo_puntos, stock, activo) SELECT ?, nombre, costo_puntos, stock, activo FROM feria_productos WHERE feria_id=?");
+      $s = $conn->prepare("INSERT INTO feria_productos (feria_id, nombre, costo_puntos, stock, activo, curso_id) SELECT ?, nombre, costo_puntos, stock, activo, curso_id FROM feria_productos WHERE feria_id=?");
       $s->bind_param("ii", $nuevo, $copiar); $s->execute();
     }
     volver($nuevo, 'success', 'Feria creada y abierta.' . ($copiar ? ' Se copiaron los productos.' : ' Ahora agrega sus productos.'));
@@ -109,17 +120,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if ($ac === 'crear_producto') {
     $nom = mb_substr(trim($_POST['nombre'] ?? ''), 0, 100); $costo = (int)($_POST['costo'] ?? 0);
     $stockTxt = trim($_POST['stock'] ?? ''); $stock = $stockTxt === '' ? null : max(0, (int)$stockTxt);
+    $cursoId = cursoOk($conn, $_POST['curso_id'] ?? '');
     if ($nom === '' || $costo < 1) volver($fid, 'danger', 'Escribe el nombre del producto y un costo en puntos válido (1 o más).');
-    $s = $conn->prepare("INSERT INTO feria_productos (feria_id, nombre, costo_puntos, stock) VALUES (?,?,?,?)");
-    $s->bind_param("isii", $fid, $nom, $costo, $stock); $s->execute();
+    $s = $conn->prepare("INSERT INTO feria_productos (feria_id, nombre, costo_puntos, stock, curso_id) VALUES (?,?,?,?,?)");
+    $s->bind_param("isiii", $fid, $nom, $costo, $stock, $cursoId); $s->execute();
     volver($fid, 'success', 'Producto agregado.');
   }
   if ($ac === 'guardar_producto') {
     $pid = (int)($_POST['id'] ?? 0); $nom = mb_substr(trim($_POST['nombre'] ?? ''), 0, 100); $costo = (int)($_POST['costo'] ?? 0);
     $stockTxt = trim($_POST['stock'] ?? ''); $stock = $stockTxt === '' ? null : max(0, (int)$stockTxt);
+    $cursoId = cursoOk($conn, $_POST['curso_id'] ?? '');
     if ($nom === '' || $costo < 1) volver($fid, 'danger', 'Nombre y costo válidos son obligatorios.');
-    $s = $conn->prepare("UPDATE feria_productos SET nombre=?, costo_puntos=?, stock=? WHERE id=? AND feria_id=?");
-    $s->bind_param("siiii", $nom, $costo, $stock, $pid, $fid); $s->execute();
+    $s = $conn->prepare("UPDATE feria_productos SET nombre=?, costo_puntos=?, stock=?, curso_id=? WHERE id=? AND feria_id=?");
+    $s->bind_param("siiiii", $nom, $costo, $stock, $cursoId, $pid, $fid); $s->execute();
     volver($fid, 'success', 'Producto actualizado. Los canjes ya hechos conservan su costo original.');
   }
   if ($ac === 'toggle_producto') {
@@ -137,7 +150,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if ($ac === 'copiar_productos') {
     $desde = (int)($_POST['desde'] ?? 0);
     if (!$desde || $desde === $fid) volver($fid, 'danger', 'Elige la feria desde la que quieres copiar.');
-    $s = $conn->prepare("INSERT INTO feria_productos (feria_id, nombre, costo_puntos, stock, activo) SELECT ?, nombre, costo_puntos, stock, activo FROM feria_productos WHERE feria_id=?");
+    $s = $conn->prepare("INSERT INTO feria_productos (feria_id, nombre, costo_puntos, stock, activo, curso_id) SELECT ?, nombre, costo_puntos, stock, activo, curso_id FROM feria_productos WHERE feria_id=?");
     $s->bind_param("ii", $fid, $desde); $s->execute();
     volver($fid, 'success', 'Productos copiados.');
   }
@@ -150,6 +163,7 @@ $sel = (int)($_GET['feria'] ?? 0);
 $feria = null;
 foreach ($ferias as $f) if ((int)$f['id'] === $sel) $feria = $f;
 if (!$feria && $ferias) { $feria = $ferias[0]; $sel = (int)$feria['id']; }
+$cursos = $conn->query("SELECT id, nombre FROM cursos ORDER BY nombre")->fetch_all(MYSQLI_ASSOC);
 $prods = []; $res = null; $canjes = [];
 if ($feria) {
   $prods = feria_productos($conn, $sel);
@@ -212,18 +226,20 @@ if ($feria) {
   <div class="card p-3 shadow-sm mb-3">
     <h5 class="mb-2">🎁 Productos de la feria</h5>
     <form method="POST" class="row g-2 mb-3"><?= csrf_campo() ?><input type="hidden" name="accion" value="crear_producto"><input type="hidden" name="feria_id" value="<?= $sel ?>">
-      <div class="col-md-5"><input name="nombre" class="form-control" maxlength="100" required placeholder="Producto (ej: Lápiz con goma)"></div>
-      <div class="col-6 col-md-2"><input type="number" name="costo" class="form-control" min="1" required placeholder="Costo (pts)"></div>
-      <div class="col-6 col-md-2"><input type="number" name="stock" class="form-control" min="0" placeholder="Stock (opcional)"></div>
+      <div class="col-md-4"><input name="nombre" class="form-control" maxlength="100" required placeholder="Producto (ej: Lápiz con goma)"></div>
+      <div class="col-md-3"><select name="curso_id" class="form-select" title="Curso al que pertenece el producto"><?= opcionesCursos($cursos) ?></select></div>
+      <div class="col-6 col-md-1"><input type="number" name="costo" class="form-control" min="1" required placeholder="Pts" title="Costo en puntos"></div>
+      <div class="col-6 col-md-1"><input type="number" name="stock" class="form-control" min="0" placeholder="Stock" title="Stock (vacío = sin límite)"></div>
       <div class="col-md-3"><button class="btn btn-primary w-100">Agregar producto</button></div>
     </form>
     <?php foreach ($prods as $p): ?>
       <form method="POST" class="row g-2 align-items-center border-top py-2"><?= csrf_campo() ?><input type="hidden" name="feria_id" value="<?= $sel ?>"><input type="hidden" name="id" value="<?= $p['id'] ?>">
-        <div class="col-md-4"><input name="nombre" class="form-control form-control-sm <?= $p['activo'] ? '' : 'text-muted' ?>" maxlength="100" value="<?= h($p['nombre']) ?>"></div>
-        <div class="col-4 col-md-2"><input type="number" name="costo" class="form-control form-control-sm" min="1" value="<?= $p['costo'] ?>" title="Costo en puntos"></div>
-        <div class="col-4 col-md-2"><input type="number" name="stock" class="form-control form-control-sm" min="0" value="<?= $p['stock'] === null ? '' : $p['stock'] ?>" placeholder="Sin límite" title="Stock total (vacío = sin límite)"></div>
+        <div class="col-md-3"><input name="nombre" class="form-control form-control-sm <?= $p['activo'] ? '' : 'text-muted' ?>" maxlength="100" value="<?= h($p['nombre']) ?>"></div>
+        <div class="col-md-2"><select name="curso_id" class="form-select form-select-sm" title="Curso del producto"><?= opcionesCursos($cursos, $p['curso_id']) ?></select></div>
+        <div class="col-4 col-md-1"><input type="number" name="costo" class="form-control form-control-sm" min="1" value="<?= $p['costo'] ?>" title="Costo en puntos"></div>
+        <div class="col-4 col-md-1"><input type="number" name="stock" class="form-control form-control-sm" min="0" value="<?= $p['stock'] === null ? '' : $p['stock'] ?>" placeholder="Sin límite" title="Stock total (vacío = sin límite)"></div>
         <div class="col-4 col-md-1 small text-muted text-center" title="Canjeados"><?= $p['usados'] ?> canj.</div>
-        <div class="col-md-3 d-flex gap-1 justify-content-md-end">
+        <div class="col-md-4 d-flex gap-1 justify-content-md-end">
           <button name="accion" value="guardar_producto" class="btn btn-sm btn-outline-primary">Guardar</button>
           <button name="accion" value="toggle_producto" class="btn btn-sm btn-outline-secondary" onclick="this.form.activo.value=<?= $p['activo'] ? 0 : 1 ?>"><?= $p['activo'] ? 'Desactivar' : 'Activar' ?></button>
           <input type="hidden" name="activo" value="">

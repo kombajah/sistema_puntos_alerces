@@ -25,22 +25,22 @@ if (isset($_GET['a'])) {
   $a = $_GET['a'];
   if ($a === 'curso') {
     $cid = (int)($_GET['curso'] ?? 0);
-    $s = $conn->prepare("SELECT a.id, a.nombre,
+    $s = $conn->prepare("SELECT a.id, a.nombre, a.curso_id,
         COALESCE((SELECT SUM(puntos) FROM registro_puntos WHERE alumno_id=a.id),0)
       - COALESCE((SELECT SUM(puntos_virtuales) FROM canjes WHERE alumno_id=a.id),0) AS saldo
       FROM alumnos a WHERE a.curso_id=? ORDER BY a.nombre");
     $s->bind_param("i", $cid); $s->execute();
     $al = $s->get_result()->fetch_all(MYSQLI_ASSOC);
-    foreach ($al as &$x) { $x['id'] = (int)$x['id']; $x['saldo'] = (int)$x['saldo']; } unset($x);
+    foreach ($al as &$x) { $x['id'] = (int)$x['id']; $x['curso_id'] = (int)$x['curso_id']; $x['saldo'] = (int)$x['saldo']; } unset($x);
     echo json_encode(['alumnos' => $al], JSON_UNESCAPED_UNICODE); exit;
   }
   if ($a === 'alumno') {
     $id = (int)($_GET['id'] ?? 0);
-    $s = $conn->prepare("SELECT a.id, a.nombre, c.nombre curso FROM alumnos a JOIN cursos c ON c.id=a.curso_id WHERE a.id=?");
+    $s = $conn->prepare("SELECT a.id, a.nombre, a.curso_id, c.nombre curso FROM alumnos a JOIN cursos c ON c.id=a.curso_id WHERE a.id=?");
     $s->bind_param("i", $id); $s->execute();
     $r = $s->get_result()->fetch_assoc();
     if (!$r) { echo json_encode(['error' => 'Alumno no encontrado']); exit; }
-    $r['id'] = (int)$r['id']; $r['saldo'] = (int)feria_saldo($conn, $id);
+    $r['id'] = (int)$r['id']; $r['curso_id'] = (int)$r['curso_id']; $r['saldo'] = (int)feria_saldo($conn, $id);
     echo json_encode($r, JSON_UNESCAPED_UNICODE); exit;
   }
   if ($a === 'canjear' && $_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -186,7 +186,9 @@ function filaAlumno(al, opts){
     d.classList.toggle('sin-saldo', al.saldo <= 0);
     d.querySelector('.saldo').textContent = 'Saldo: ' + al.saldo + ' pts';
     chips.innerHTML = '';
-    P.forEach(p => {
+    const propios = P.filter(p => p.curso_id === null || p.curso_id === al.curso_id);
+    if (!propios.length) chips.innerHTML = '<span class="small text-muted">Esta feria no tiene productos para el curso de este alumno.</span>';
+    propios.forEach(p => {
       const q = sel[p.id] || 0, dp = disp[p.id] === null ? Infinity : disp[p.id] - q;
       const sinSaldo = p.costo > quedan, agotado = dp <= 0, off = (sinSaldo || agotado);
       const b = document.createElement('button'); b.type = 'button';
