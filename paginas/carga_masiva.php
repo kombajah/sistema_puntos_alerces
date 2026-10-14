@@ -1,5 +1,6 @@
 <?php
 require_once 'conexion.php'; requiere_login();
+require_once 'xlsx_lib.php';
 //if (!es_admin()) { http_response_code(403); die("Solo el administrador puede usar la carga masiva."); }
 
 function _nuevo_qr(){ return bin2hex(random_bytes(6)); }
@@ -13,27 +14,49 @@ function _limpiar($v){
   return trim((string)$v);
 }
 
+// Lee el CSV subido y devuelve [n° de línea => [celdas]].
+function _filas_csv($ruta){
+  $fh = fopen($ruta, 'r');
+  if (!$fh) throw new RuntimeException('No se pudo leer el archivo.');
+  $bom = fread($fh, 3); if ($bom !== "\xEF\xBB\xBF") rewind($fh);
+  // Detectar el delimitador (, o ;) según la primera línea
+  $prueba = fgets($fh) ?: '';
+  $delim = (substr_count($prueba, ';') >= substr_count($prueba, ',')) ? ';' : ',';
+  fseek($fh, $bom === "\xEF\xBB\xBF" ? 3 : 0);
+  $filas = []; $n = 0;
+  while (($fila = fgetcsv($fh, 0, $delim, '"', '\\')) !== false) { $n++; $filas[$n] = $fila; }
+  fclose($fh);
+  return $filas;
+}
+
+// Lee el archivo subido: Excel (.xlsx) o CSV. Devuelve [n° de fila => [celdas]] (el n° coincide con la fila que ve el usuario).
+function _leer_archivo($ruta){
+  $fh = fopen($ruta, 'rb');
+  if (!$fh) throw new RuntimeException('No se pudo leer el archivo.');
+  $firma = (string)fread($fh, 8); fclose($fh);
+  if (strncmp($firma, 'PK', 2) === 0) return xlsx_leer($ruta);
+  if (strncmp($firma, "\xD0\xCF\x11\xE0", 4) === 0) throw new RuntimeException('Es un Excel antiguo (.xls). Ábrelo y guárdalo como «Libro de Excel (.xlsx)» y vuelve a subirlo.');
+  return _filas_csv($ruta);
+}
+
 $resultado = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if (!isset($_FILES['archivo']) || $_FILES['archivo']['error'] !== UPLOAD_ERR_OK) {
-    $resultado = ['ok'=>0, 'errores'=>[['linea'=>0,'motivo'=>'No se recibió un archivo válido (revisa que sea .csv).']]];
+    $resultado = ['ok'=>0, 'errores'=>[['linea'=>0,'motivo'=>'No se recibió un archivo válido (revisa que sea .xlsx o .csv).']]];
   } else {
-    $fh = fopen($_FILES['archivo']['tmp_name'], 'r');
-    if (!$fh) {
-      $resultado = ['ok'=>0, 'errores'=>[['linea'=>0,'motivo'=>'No se pudo leer el archivo.']]];
-    } else {
-      $bom = fread($fh, 3); if ($bom !== "\xEF\xBB\xBF") rewind($fh);
-      
-      // Detectar el delimitador (, o ;) según la primera línea
-      $linea_prueba = fgets($fh);
-      $delimitador = (substr_count($linea_prueba, ';') >= substr_count($linea_prueba, ',')) ? ';' : ',';
-      
-      // Volver al inicio después del BOM para procesar los datos
-      fseek($fh, $bom === "\xEF\xBB\xBF" ? 3 : 0);
+    try { $filas = _leer_archivo($_FILES['archivo']['tmp_name']); }
+    catch (RuntimeException $e) { $filas = null; $resultado = ['ok'=>0, 'errores'=>[['linea'=>0,'motivo'=>$e->getMessage()]]]; }
 
-      $header = fgetcsv($fh, 0, $delimitador);
-      if (!$header) {
+    if ($filas !== null) {
+      // Encabezado = primera fila con datos (se ignora una línea inicial "sep=;" que dejan algunas plantillas CSV antiguas)
+      $lineaHeader = null; $header = null;
+      foreach ($filas as $n => $f) {
+        if (count(array_filter($f, fn($v) => _limpiar($v) !== '')) === 0) continue;
+        if (count($f) === 1 && preg_match('/^sep=.$/i', _limpiar($f[0]))) continue;
+        $lineaHeader = $n; $header = $f; break;
+      }
+      if ($header === null) {
         $resultado = ['ok'=>0, 'errores'=>[['linea'=>1,'motivo'=>'Archivo vacío o con formato inválido.']]];
       } else {
         $header = array_map(fn($c) => strtolower(_limpiar($c)), $header);
@@ -41,11 +64,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Las columnas antiguas docente_usuario y asignatura (si vienen en el archivo) se ignoran.
         $faltan = array_diff(['curso','alumno'], array_keys($idx));
         if ($faltan) {
-          $resultado = ['ok'=>0, 'errores'=>[['linea'=>1,'motivo'=>'Faltan columnas obligatorias: '.implode(', ', $faltan)]]];
+          $resultado = ['ok'=>0, 'errores'=>[['linea'=>$lineaHeader,'motivo'=>'Faltan columnas obligatorias: '.implode(', ', $faltan)]]];
         } else {
-          $ok = 0; $errores = []; $linea = 1;
-          while (($fila = fgetcsv($fh, 0, $delimitador)) !== false) {
-            $linea++;
+          $ok = 0; $errores = [];
+          foreach ($filas as $linea => $fila) {
+            if ($linea <= $lineaHeader) continue;
             if (count(array_filter($fila, fn($v) => _limpiar($v) !== '')) === 0) continue; // fila vacía
             $curN = $alN = $nfc = '';
             try {
@@ -95,7 +118,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           $resultado = ['ok'=>$ok, 'errores'=>$errores];
         }
       }
-      fclose($fh);
     }
   }
 }
@@ -106,15 +128,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="container mt-2">
   <div class="card p-4 shadow-sm mb-3">
     <h4 class="text-primary mb-3">Carga masiva de alumnos</h4>
-    <p class="text-muted">Sube un archivo <b>.csv</b> con las columnas <code>curso, alumno, nfc_uid</code>.
+    <p class="text-muted">Sube un archivo de <b>Excel (.xlsx)</b> con las columnas <code>curso, alumno, nfc_uid</code> (también se acepta .csv).
       Los alumnos se asocian solo al curso; si el curso no existe, se crea automáticamente. La columna <code>nfc_uid</code> es opcional.
       (Las columnas antiguas <code>docente_usuario</code> y <code>asignatura</code> se ignoran si vienen en el archivo.)</p>
-    <a href="plantilla_alumnos.php" class="btn btn-outline-primary mb-3">⬇️ Descargar plantilla CSV</a>
+    <a href="plantilla_alumnos.php" class="btn btn-outline-primary mb-3">⬇️ Descargar plantilla Excel</a>
     <form method="POST" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap">
-      <input type="file" name="archivo" accept=".csv" class="form-control" style="max-width:320px" required>
+      <input type="file" name="archivo" accept=".xlsx,.csv" class="form-control" style="max-width:320px" required>
       <button class="btn btn-primary">Cargar alumnos</button>
     </form>
-    <small class="text-muted d-block mt-2">¿Tienes un archivo Excel (.xlsx)? Ábrelo y usa "Guardar como" → CSV (delimitado por comas o punto y coma) antes de subirlo.</small>
+    <small class="text-muted d-block mt-2">Se lee la primera hoja del Excel. La plantilla trae 3 filas de ejemplo: bórralas antes de subirla, porque si no también se cargarán como alumnos.</small>
   </div>
 
   <?php if ($resultado): ?>
@@ -144,7 +166,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php if ($hayFilas): ?>
     <a download="filas_con_error.csv" class="btn btn-outline-primary btn-sm" href="data:text/csv;base64,<?= base64_encode($csvErr) ?>">⬇️ Descargar solo las filas con error</a>
     <?php endif; ?>
-    <small class="text-muted d-block mt-2">«Línea» es el número de fila de tu archivo (la 1 es el encabezado). Los alumnos sin error <b>ya quedaron registrados</b>: corrige y sube solo las filas con error para no duplicarlos.</small>
+    <small class="text-muted d-block mt-2">«Línea» es el número de fila de tu archivo (en Excel, el número que aparece a la izquierda; la 1 es el encabezado). Los alumnos sin error <b>ya quedaron registrados</b>: corrige y sube solo las filas con error para no duplicarlos.</small>
     <?php endif; ?>
   </div>
   <?php endif; ?>
