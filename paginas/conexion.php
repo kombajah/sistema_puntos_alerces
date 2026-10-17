@@ -12,7 +12,7 @@ $DB_PORT = (int)(getenv('DB_PORT') ?: 18347);
 $DB_NAME = getenv('DB_NAME') ?: '';
 $DB_USER = getenv('DB_USER') ?: '';
 $DB_PASS = getenv('DB_PASS') ?: '';
-$DB_CA   = __DIR__ . '/../certs/ca.pem';
+$DB_CA   = __DIR__ . '/../certs/ca_alerces_nueva_db.pem';
 
 try {
   $conn = mysqli_init();
