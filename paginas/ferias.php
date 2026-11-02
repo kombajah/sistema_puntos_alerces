@@ -1,8 +1,7 @@
 <?php
-// Administración de las ferias del canje (solo administrador): ferias, productos con su costo en puntos y resultados.
+// Administración de las ferias del canje (todos los usuarios con sesión): ferias, productos con su costo en puntos y resultados.
 require_once 'conexion.php';
 requiere_login();
-if (!es_admin()) { header('Location: feria.php'); exit; }
 require_once 'feria_lib.php';
 feria_asegurar($conn);
 

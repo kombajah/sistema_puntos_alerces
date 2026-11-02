@@ -88,11 +88,11 @@ $ultimos = $feriaId ? feria_ultimos($conn, $feriaId) : [];
 <div class="container mt-2 mb-4" style="max-width:980px">
   <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
     <h4 class="text-primary mb-0 me-auto">🎪 Feria del canje</h4>
-    <?php if (es_admin()): ?><a href="ferias.php" class="btn btn-sm btn-outline-primary">⚙️ Administrar ferias</a><?php endif; ?>
+    <a href="ferias.php" class="btn btn-sm btn-outline-primary">⚙️ Administrar ferias</a>
   </div>
 
 <?php if (!$abiertas): ?>
-  <div class="alert alert-info">No hay ninguna feria abierta en este momento.<?php if (es_admin()): ?> Crea una en <a href="ferias.php">Administrar ferias</a>.<?php else: ?> Consulta con el administrador cuándo se abrirá la próxima.<?php endif; ?></div>
+  <div class="alert alert-info">No hay ninguna feria abierta en este momento. Crea una en <a href="ferias.php">Administrar ferias</a>.</div>
 <?php else: ?>
   <div class="card p-3 shadow-sm mb-3">
     <form method="GET" class="row g-2 align-items-center">
@@ -107,7 +107,7 @@ $ultimos = $feriaId ? feria_ultimos($conn, $feriaId) : [];
   </div>
 
   <?php if (!$productos): ?>
-    <div class="alert alert-warning">Esta feria todavía no tiene productos activos.<?php if (es_admin()): ?> Agrégalos en <a href="ferias.php?feria=<?= $feriaId ?>">Administrar ferias</a>.<?php endif; ?></div>
+    <div class="alert alert-warning">Esta feria todavía no tiene productos activos. Agrégalos en <a href="ferias.php?feria=<?= $feriaId ?>">Administrar ferias</a>.</div>
   <?php else: ?>
 
   <div class="card p-3 shadow-sm mb-3">

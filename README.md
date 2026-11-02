@@ -19,6 +19,9 @@ pudo verla.
 
 Ver `INSTRUCCIONES_AIVEN_VERCEL.md` para el detalle completo.
 
+## Cambio: Administrar ferias para todos los usuarios
+- `ferias.php` ya no es exclusivo del administrador: cualquier usuario con sesión iniciada (docente o admin) puede crear, editar, abrir/cerrar y eliminar ferias (solo si no tienen canjes), gestionar sus productos y descargar el Excel de canjes. La opción aparece en el menú ☰ para todos. No requiere migración de base de datos.
+
 ## Cambios de la versión de modificaciones (los más recientes; prevalecen sobre lo descrito más abajo)
 - **Asignatura = atributo del maestro.** El mantenedor de asignaturas se movió de *Contenido* a *Maestros* (solo administrador). Al crear un maestro se guardan nombre, apellido, usuario, contraseña y asignatura (obligatoria para docentes, opcional para administradores). Un maestro tiene una asignatura.
 - **Cursos independientes de la asignatura y compartidos por todos los docentes.** *Contenido* ya no tiene asignaturas: se crea el curso solo con su nombre y el alumno se registra asociado solo al curso. Eliminar un curso queda reservado al administrador (borra alumnos y puntos de todos).
