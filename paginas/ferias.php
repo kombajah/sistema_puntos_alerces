@@ -17,6 +17,25 @@ function opcionesCursos($cursos, $sel = null){
   foreach ($cursos as $c) $o .= '<option value="' . (int)$c['id'] . '"' . ((int)$c['id'] === (int)$sel ? ' selected' : '') . '>' . h($c['nombre']) . '</option>';
   return $o;
 }
+// Copia los productos de una feria a otra. $modo: '' = mantener el curso de cada producto, 'todos' = para todos los cursos, id = asignarlos a ese curso.
+// Devuelve cuántos productos se copiaron.
+function copiarProductos($conn, $destino, $origen, $modo){
+  if ($modo === '' || $modo === null) {
+    $s = $conn->prepare("INSERT INTO feria_productos (feria_id, nombre, costo_puntos, stock, activo, curso_id) SELECT ?, nombre, costo_puntos, stock, activo, curso_id FROM feria_productos WHERE feria_id=?");
+    $s->bind_param("ii", $destino, $origen);
+  } else {
+    $cid = $modo === 'todos' ? null : cursoOk($conn, $modo);
+    $s = $conn->prepare("INSERT INTO feria_productos (feria_id, nombre, costo_puntos, stock, activo, curso_id) SELECT ?, nombre, costo_puntos, stock, activo, ? FROM feria_productos WHERE feria_id=?");
+    $s->bind_param("iii", $destino, $cid, $origen);
+  }
+  $s->execute();
+  return max(0, (int)$s->affected_rows);
+}
+function opcionesCopiaCurso($cursos){
+  $o = '<option value="">Mantener el curso de cada producto</option><option value="todos">Dejarlos para todos los cursos</option>';
+  foreach ($cursos as $c) $o .= '<option value="' . (int)$c['id'] . '">Asignarlos al curso: ' . h($c['nombre']) . '</option>';
+  return $o;
+}
 function volver($id, $tipo, $msg){ $_SESSION['flash_feria'] = [$tipo, $msg]; header('Location: ferias.php' . ($id ? '?feria=' . (int)$id : '')); exit; }
 
 // ---------------------------- Descarga de los canjes de una feria (Excel .xlsx; CSV si el servidor no tiene ZipArchive) ----------------------------
@@ -93,11 +112,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $s = $conn->prepare("INSERT INTO ferias (nombre, fecha, estado, creada, creada_por) VALUES (?,?,'abierta',?,?)");
     $s->bind_param("sssi", $nom, $fv, $ahora, $uid); $s->execute();
     $nuevo = (int)$conn->insert_id;
-    if ($copiar) {
-      $s = $conn->prepare("INSERT INTO feria_productos (feria_id, nombre, costo_puntos, stock, activo, curso_id) SELECT ?, nombre, costo_puntos, stock, activo, curso_id FROM feria_productos WHERE feria_id=?");
-      $s->bind_param("ii", $nuevo, $copiar); $s->execute();
-    }
-    volver($nuevo, 'success', 'Feria creada y abierta.' . ($copiar ? ' Se copiaron los productos.' : ' Ahora agrega sus productos.'));
+    $nCopiados = $copiar ? copiarProductos($conn, $nuevo, $copiar, trim($_POST['copiar_curso'] ?? '')) : 0;
+    volver($nuevo, $copiar && !$nCopiados ? 'warning' : 'success', 'Feria creada y abierta.' . ($copiar ? ($nCopiados ? " Se copiaron $nCopiados producto(s)." : ' La feria elegida no tenía productos para copiar.') : ' Ahora agrega sus productos.'));
   }
   if ($ac === 'editar_feria') {
     $nom = mb_substr(trim($_POST['nombre'] ?? ''), 0, 100); $fecha = trim($_POST['fecha'] ?? ''); $fv = fechaOk($fecha) ? $fecha : null;
@@ -149,9 +165,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if ($ac === 'copiar_productos') {
     $desde = (int)($_POST['desde'] ?? 0);
     if (!$desde || $desde === $fid) volver($fid, 'danger', 'Elige la feria desde la que quieres copiar.');
-    $s = $conn->prepare("INSERT INTO feria_productos (feria_id, nombre, costo_puntos, stock, activo, curso_id) SELECT ?, nombre, costo_puntos, stock, activo, curso_id FROM feria_productos WHERE feria_id=?");
-    $s->bind_param("ii", $fid, $desde); $s->execute();
-    volver($fid, 'success', 'Productos copiados.');
+    $n = copiarProductos($conn, $fid, $desde, trim($_POST['copiar_curso'] ?? ''));
+    volver($fid, $n ? 'success' : 'warning', $n ? "Se copiaron $n producto(s)." : 'La feria elegida no tenía productos para copiar.');
   }
 }
 
@@ -192,6 +207,7 @@ if ($feria) {
       <div class="col-md-3"><select name="copiar_de" class="form-select"><option value="0">Sin copiar productos</option>
         <?php foreach ($ferias as $f): ?><option value="<?= (int)$f['id'] ?>">Copiar productos de: <?= h($f['nombre']) ?></option><?php endforeach; ?></select></div>
       <div class="col-md-2"><button class="btn btn-primary w-100">Crear feria</button></div>
+      <div class="col-md-5"><select name="copiar_curso" class="form-select form-select-sm" title="Solo se usa si copias productos de otra feria"><?= opcionesCopiaCurso($cursos) ?></select></div>
     </form>
   </div>
 
@@ -250,6 +266,7 @@ if ($feria) {
     <form method="POST" class="d-flex flex-wrap gap-2 border-top pt-3 mt-2"><?= csrf_campo() ?><input type="hidden" name="accion" value="copiar_productos"><input type="hidden" name="feria_id" value="<?= $sel ?>">
       <select name="desde" class="form-select form-select-sm w-auto"><option value="0">Copiar productos de otra feria...</option>
         <?php foreach ($ferias as $f): if ((int)$f['id'] !== $sel): ?><option value="<?= (int)$f['id'] ?>"><?= h($f['nombre']) ?></option><?php endif; endforeach; ?></select>
+      <select name="copiar_curso" class="form-select form-select-sm w-auto"><?= opcionesCopiaCurso($cursos) ?></select>
       <button class="btn btn-sm btn-outline-secondary">Copiar</button>
     </form>
     <?php endif; ?>
