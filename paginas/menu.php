@@ -9,6 +9,7 @@ $secundarios = [
   'feria.php'        => '🎪 Feria del canje',
   'ferias.php'       => '⚙️ Administrar ferias',
   'metas.php'        => '🎯 Metas',
+  'tareas.php'       => '📝 Tareas',
   'historico.php'    => '🕘 Histórico',
   'tarjetas.php'     => '🪪 Tarjetas',
   'carga_masiva.php' => '📥 Carga masiva',

@@ -102,6 +102,24 @@ $stmtRec = $conn->prepare("
 $stmtRec->bind_param("i", $alumno_id);
 $stmtRec->execute();
 $recientes = $stmtRec->get_result()->fetch_all(MYSQLI_ASSOC);
+
+// 7. Tareas y actividades del curso que aún no cumplen su fecha de entrega (el día de la entrega todavía cuenta como pendiente).
+// Si ningún docente ha registrado tareas, la tabla puede no existir todavía: en ese caso simplemente no hay pendientes.
+require_once __DIR__ . '/tareas_lib.php';
+$hoy = substr(ahora_chile(), 0, 10);
+$tareasPend = [];
+try {
+  $stmtTar = $conn->prepare("
+    SELECT t.descripcion, t.fecha_entrega, asg.nombre AS asignatura
+    FROM tareas t LEFT JOIN asignaturas asg ON asg.id = t.asignatura_id
+    WHERE t.curso_id = ? AND t.fecha_entrega >= ?
+    ORDER BY t.fecha_entrega ASC, t.id ASC
+    LIMIT 30
+  ");
+  $stmtTar->bind_param("is", $curso_id, $hoy);
+  $stmtTar->execute();
+  $tareasPend = $stmtTar->get_result()->fetch_all(MYSQLI_ASSOC);
+} catch (Throwable $e) { $tareasPend = []; }
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -124,6 +142,29 @@ $recientes = $stmtRec->get_result()->fetch_all(MYSQLI_ASSOC);
       <span class="text-muted d-block text-uppercase fw-bold small">Puntaje Total</span>
       <h1 class="display-4 fw-bold text-success mb-0"><?= $totalGeneral ?></h1>
     </div>
+  </div>
+
+  <!-- Tareas y actividades por entregar (según el curso del alumno) -->
+  <div class="card shadow-sm border-0 mb-3">
+    <div class="card-header bg-white py-3">
+      <h5 class="mb-0 text-primary">📝 Tareas y actividades por entregar</h5>
+      <div class="small text-muted"><?= htmlspecialchars($alumno['curso_nombre']) ?></div>
+    </div>
+    <ul class="list-group list-group-flush">
+      <?php if (empty($tareasPend)): ?>
+        <li class="list-group-item text-center text-muted py-3">No hay tareas ni actividades pendientes 🎉</li>
+      <?php else: ?>
+        <?php foreach ($tareasPend as $t): $e = tarea_etiqueta_fecha($t['fecha_entrega'], $hoy); ?>
+          <li class="list-group-item py-3">
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+              <span class="fw-semibold"><?= h(fecha_corta($t['fecha_entrega'])) ?><?= $t['asignatura'] ? ' · ' . htmlspecialchars($t['asignatura']) : '' ?></span>
+              <span class="badge <?= h($e['clase']) ?> flex-shrink-0"><?= h($e['texto']) ?></span>
+            </div>
+            <div style="white-space:pre-line"><?= htmlspecialchars($t['descripcion']) ?></div>
+          </li>
+        <?php endforeach; ?>
+      <?php endif; ?>
+    </ul>
   </div>
 
   <!-- Indicadores -->
